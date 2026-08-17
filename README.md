@@ -17,8 +17,10 @@ The `pdo/query-analyzer` plugin registers a method-call hook targeting
 
 Dynamically built queries and unexplainable statements are skipped silently.
 
-Driver differences: SQLite accepts `EXPLAIN` for `SELECT` and DML, so all of them are checked.
-MySQL only accepts `EXPLAIN` for `SELECT`, so DML is skipped there rather than reported.
+Both SQLite and MySQL accept `EXPLAIN` for `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `REPLACE`, and
+CTEs, so all of them are checked on either driver. The only driver difference is placeholder
+normalization: SQLite accepts `?` and `:name` inline, while other drivers (MySQL, …) need them
+replaced with `NULL` because `EXPLAIN` runs through `PDO::query()`, not a prepared statement.
 
 ## Configuration
 
@@ -50,17 +52,21 @@ Two layers, mirroring the [mago-extension-template](https://github.com/carthage-
 2. **Corpus** (`tests/corpus/`) — a small PHP project analyzed by the real `mago` binary with
    the extension host attached (`tests/corpus/worker.php`). Fixtures declare expected
    diagnostics with `@mago-expect analysis:pdo/query-analyzer/unrunnable-query`; runnable and
-   skipped queries assert silence. The corpus database is seeded by `tests/corpus/seed.php`.
+   skipped queries assert silence. The corpus database is seeded by `tests/corpus/seed.php`
+   (SQLite) and `tests/corpus/seed-mysql.php` (MySQL).
 
    ```sh
-   just corpus
+   just corpus        # against the local SQLite database
+   just corpus-mysql  # against a local MySQL 8.0 podman container
    ```
 
-Everything in one command (composer validate, unit tests, lint, analyze, corpus):
+   `just corpus-mysql` manages the container itself (`just mysql` starts/reuses it,
+   `just mysql-down` removes it). Everything in one command:
 
-```sh
-just check
-```
+   ```sh
+   just check        # SQLite corpus
+   just check-mysql  # also runs the MySQL corpus (requires the container)
+   ```
 
 The `mago` binary is taken from the local dev checkout
 (`../mago/target/release/mago`); override with `MAGO_BIN`.

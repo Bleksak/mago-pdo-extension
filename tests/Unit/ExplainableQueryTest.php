@@ -56,6 +56,21 @@ final class ExplainableQueryTest extends TestCase
                 'mysql',
                 'SELECT * FROM users WHERE id = NULL',
             ],
+            'mysql insert normalizes positional placeholder' => [
+                'INSERT INTO users (name) VALUES (?)',
+                'mysql',
+                'INSERT INTO users (name) VALUES (NULL)',
+            ],
+            'mysql update normalizes named placeholders' => [
+                'UPDATE users SET name = :name WHERE id = :id',
+                'mysql',
+                'UPDATE users SET name = NULL WHERE id = NULL',
+            ],
+            'mysql delete normalizes positional placeholder' => [
+                'DELETE FROM users WHERE id = ?',
+                'mysql',
+                'DELETE FROM users WHERE id = NULL',
+            ],
             'mysql with cte' => [
                 'WITH c AS (SELECT 1) SELECT * FROM c',
                 'mysql',
@@ -86,15 +101,11 @@ final class ExplainableQueryTest extends TestCase
             'empty' => ['', 'sqlite'],
             'whitespace only' => ['   ', 'sqlite'],
             'trailing semicolon only' => [';', 'sqlite'],
-            // MySQL has no EXPLAIN for DML, so it is skipped rather than
+            // MySQL has no EXPLAIN for DDL, so it is skipped rather than
             // reported as unrunnable.
-            'mysql insert' => ['INSERT INTO t (a) VALUES (1)', 'mysql'],
-            'mysql update' => ['UPDATE t SET a = 1', 'mysql'],
-            'mysql delete' => ['DELETE FROM t', 'mysql'],
-            'mysql replace' => ['REPLACE INTO t (a) VALUES (1)', 'mysql'],
+            'mysql create table' => ['CREATE TABLE t (a INT)', 'mysql'],
             'mysql drop table' => ['DROP TABLE t', 'mysql'],
-            // Unknown drivers get the conservative (MySQL) behavior.
-            'unknown driver dml' => ['DELETE FROM t', 'pgsql'],
+            'mysql truncate' => ['TRUNCATE t', 'mysql'],
         ];
     }
 
@@ -158,12 +169,19 @@ final class ExplainableQueryTest extends TestCase
         ));
     }
 
-    public function testUnknownDriverFallsBackToConservativeBehavior(): void
+    public function testUnknownDriverNormalizesPlaceholders(): void
     {
         self::assertSame('SELECT 1', ExplainableQuery::fromQuery(
             'SELECT 1',
             'pgsql',
         ));
-        self::assertNull(ExplainableQuery::fromQuery('DELETE FROM t', 'pgsql'));
+        self::assertSame('DELETE FROM t', ExplainableQuery::fromQuery(
+            'DELETE FROM t',
+            'pgsql',
+        ));
+        self::assertSame('SELECT * FROM t WHERE id = NULL', ExplainableQuery::fromQuery(
+            'SELECT * FROM t WHERE id = ?',
+            'pgsql',
+        ));
     }
 }
