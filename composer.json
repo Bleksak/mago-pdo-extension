@@ -1,0 +1,31 @@
+{
+    "name": "bleksak/mago-pdo-extension",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Bleksak\\MagoPdoExtension\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Jiri Velek",
+            "email": "jiri.velek@yahoo.com"
+        }
+    ],
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "repositories": [
+        {
+            "type": "path",
+            "url": "../mago",
+            "options": {
+                "symlink": true
+            }
+        }
+    ],
+    "require": {
+        "carthage-software/mago": "*",
+        "symfony/dotenv": "^8.1"
+    }
+}

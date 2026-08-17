@@ -1,0 +1,114 @@
+# Mago configuration file
+# For more information, see https://mago.carthage.software/#/getting-started/configuration
+php-version = "8.5.0"
+
+[source]
+paths = ["src", "bin", "tests"]
+includes = ["vendor", "var"]
+excludes = [
+  "vendor/nikic/fast-route/test",
+  "vendor/composer/autoload_classmap.php",
+  # "vendor/google/common-protos/metadata",
+  "vendor/google/gax/metadata",
+  # "vendor/google/longrunning/metadata",
+  "vendor/symfony/cache/Traits/ValueWrapper.php",
+  "vendor/composer/autoload_static.php",
+]
+
+[formatter]
+print-width = 80
+tab-width = 4
+use-tabs = false
+method-chain-breaking-style = "next_line"
+null-type-hint = "question"
+always-break-attribute-named-argument-lists = true
+method-brace-style = "next_line"
+empty-line-between-same-symbols = true
+line-before-binary-operator = true
+indent-binary-expression-continuation = true
+
+[linter]
+integrations = ["symfony", "amphp", "phpunit", "doctrine"]
+
+[linter.rules]
+too-many-properties = { "enabled" = false }
+too-many-methods = { "enabled" = false }
+kan-defect = { "enabled" = false }
+excessive-parameter-list = { "enabled" = false }
+cyclomatic-complexity = { "enabled" = false }
+no-assign-in-condition = { enabled = false }
+no-boolean-flag-parameter = { enabled = false }
+prefer-arrow-function = { enabled = true }
+yoda-conditions = { enabled = false }
+sensitive-parameter = { enabled = true }
+no-redundant-use = { enabled = true }
+no-variable-variable = { enabled = true }
+no-else-clause = { enabled = false }
+no-shorthand-ternary = { enabled = false }
+assert-description = { enabled = false }
+trait-name = { psr = true }
+interface-name = { psr = true }
+class-name = { psr = true }
+prefer-early-continue = { enabled = true, max_allowed_statements = 1 }
+no-isset = { enabled = false }
+file-name = { enabled = true }
+single-class-per-file = { enabled = true }
+prefer-first-class-callable = { check-functions = true, enabled = true }
+
+ambiguous-function-call = { enabled = true }
+require-namespace = { enabled = true }
+
+literal-named-argument = { enabled = false }
+halstead = { effort-threshold = 7000, enabled = false }
+no-is-null = { enabled = true }
+no-array-accumulation-in-loop = { enabled = true }
+no-iterator-to-array-in-foreach = { enabled = true }
+no-parameter-shadowing = { enabled = true }
+sorted-integer-keys = { enabled = true }
+no-redundant-readonly = { enabled = true  }
+method-name = { enabled = true, use-snake-case-for-tests = false, camel = true }
+no-dead-store = { enabled = true }
+no-redundant-variable = { enabled = true }
+no-redundant-else = { enabled = true }
+no-negated-ternary = { enabled = true }
+no-unused-closure-capture = { enabled = true }
+no-unused-global = { enabled = true }
+no-unused-static = { enabled = true }
+prefer-array-spread = { enabled = true }
+prefer-early-return = { enabled = true }
+suspicious-explode-arguments = { enabled = true }
+no-duplicate-match-arm = { enabled = true }
+prefer-datetimeimmutable-create-from-timestamp = { enabled = true }
+redundant-static = { enabled = true }
+too-many-enum-cases = { enabled = false }
+
+[analyzer]
+find-unused-expressions = true
+find-unused-definitions = true
+analyze-dead-code = true
+memoize-properties = true
+check-throws = false # NOTE: we cannot use this because symfony abuses exceptions
+check-missing-override = true
+find-unused-parameters = true
+strict-list-index-checks = true
+check-missing-type-hints = true
+check-closure-missing-type-hints = true
+check-arrow-function-missing-type-hints = true
+register-super-globals = true
+trust-existence-checks = true
+check-property-initialization = false # NOTE: We cannot use this until the issues with it are fixed or more configuration is added
+check-use-statements = true
+enforce-class-finality = true
+require-api-or-internal = true
+check-experimental = true
+check-name-casing = true
+strict-array-index-existence = true
+allow-array-truthy-operand = false
+
+# TODO: enable this one later probably
+# allow-side-effects-in-conditions = false
+
+
+class-initializers = ["__construct", "setContainer"]
+plugins = ["standard", "std", "php-stdlib", "psr-container"]
+
