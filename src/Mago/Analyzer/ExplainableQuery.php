@@ -34,7 +34,11 @@ final class ExplainableQuery
         return self::replacePlaceholders($statement, $driver);
     }
 
-    private static function firstStatement(string $query): string
+    /**
+     * Returns the first statement of a raw query, cutting at the first
+     * top-level semicolon.
+     */
+    public static function firstStatement(string $query): string
     {
         $length = strlen($query);
         $inSingle = false;

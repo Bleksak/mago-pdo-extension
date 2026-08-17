@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Bleksak\MagoPdoExtension\Mago\Analyzer;
 
 use Bleksak\MagoPdoExtension\Mago\Analyzer\Hooks\PdoQueryExplainHook;
+use Bleksak\MagoPdoExtension\Mago\Analyzer\Providers\PdoQueryReturnTypeProvider;
+use Bleksak\MagoPdoExtension\Mago\Analyzer\Providers\PdoStatementFetchReturnTypeProvider;
 use Bleksak\MagoPdoExtension\Services\ConnectionProvider;
 use Mago\Sdk\Analyzer\Plugin;
 use Mago\Sdk\Analyzer\PluginDefinition;
@@ -31,8 +33,16 @@ final class QueryAnalyzerPlugin implements Plugin
     #[Override]
     public function register(PluginRegistry $registry): void
     {
-        $registry->registerMethodCallAnalysisHook(new PdoQueryExplainHook(
-            new ConnectionProvider(),
-        ));
+        $connections = new ConnectionProvider();
+
+        $registry->registerMethodCallAnalysisHook(
+            new PdoQueryExplainHook($connections),
+        );
+        $registry->registerMethodReturnTypeProvider(
+            new PdoQueryReturnTypeProvider($connections),
+        );
+        $registry->registerMethodReturnTypeProvider(
+            new PdoStatementFetchReturnTypeProvider(),
+        );
     }
 }

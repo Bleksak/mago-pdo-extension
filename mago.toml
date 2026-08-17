@@ -3,8 +3,8 @@
 php-version = "8.5.0"
 
 [source]
-paths = ["src", "bin", "tests/Unit"]
-includes = ["vendor", "var"]
+paths = ["src", "tests/Unit"]
+includes = ["vendor"]
 excludes = [
   "vendor/carthage-software/mago/crates/syntax/tests/fixtures/*",
   "vendor/nikic/fast-route/test",

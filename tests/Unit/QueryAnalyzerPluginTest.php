@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Bleksak\MagoPdoExtension\Tests;
 
 use Bleksak\MagoPdoExtension\Mago\Analyzer\Hooks\PdoQueryExplainHook;
+use Bleksak\MagoPdoExtension\Mago\Analyzer\Providers\PdoQueryReturnTypeProvider;
+use Bleksak\MagoPdoExtension\Mago\Analyzer\Providers\PdoStatementFetchReturnTypeProvider;
 use Bleksak\MagoPdoExtension\Mago\Analyzer\QueryAnalyzerPlugin;
 use Mago\Sdk\Analyzer\FileAnalysisRequirement;
 use Mago\Sdk\Analyzer\MethodTarget;
@@ -34,6 +36,71 @@ final class QueryAnalyzerPluginTest extends TestCase
         $hook = $registry->getMethodCallAnalysisHooks()[0] ?? null;
 
         self::assertInstanceOf(PdoQueryExplainHook::class, $hook);
+    }
+
+    public function testRegistersReturnTypeProviders(): void
+    {
+        $registry = new PluginRegistry();
+
+        new QueryAnalyzerPlugin()->register($registry);
+
+        $providers = $registry->getMethodReturnTypeProviders();
+
+        self::assertInstanceOf(
+            PdoQueryReturnTypeProvider::class,
+            $providers[0] ?? null,
+        );
+        self::assertInstanceOf(
+            PdoStatementFetchReturnTypeProvider::class,
+            $providers[1] ?? null,
+        );
+    }
+
+    public function testQueryProviderTargets(): void
+    {
+        $registry = new PluginRegistry();
+
+        new QueryAnalyzerPlugin()->register($registry);
+
+        $provider = $registry->getMethodReturnTypeProviders()[0] ?? null;
+        self::assertInstanceOf(PdoQueryReturnTypeProvider::class, $provider);
+
+        self::assertSame(
+            ['PDO::query', 'PDO::prepare'],
+            array_map(
+                static fn(MethodTarget $target): string => (
+                    $target->class . '::' . $target->method
+                ),
+                $provider->getTargets(),
+            ),
+        );
+    }
+
+    public function testFetchProviderTargets(): void
+    {
+        $registry = new PluginRegistry();
+
+        new QueryAnalyzerPlugin()->register($registry);
+
+        $provider = $registry->getMethodReturnTypeProviders()[1] ?? null;
+        self::assertInstanceOf(
+            PdoStatementFetchReturnTypeProvider::class,
+            $provider,
+        );
+
+        self::assertSame(
+            [
+                'PDOStatement::fetch',
+                'PDOStatement::fetchColumn',
+                'PDOStatement::fetchAll',
+            ],
+            array_map(
+                static fn(MethodTarget $target): string => (
+                    $target->class . '::' . $target->method
+                ),
+                $provider->getTargets(),
+            ),
+        );
     }
 
     public function testHookTargetsAndRequirements(): void

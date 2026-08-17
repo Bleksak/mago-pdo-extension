@@ -25,10 +25,9 @@ final class RunnableQueries
             return null;
         }
 
-        // @mago-ignore analysis:mixed-assignment
         $name = $statement->fetchColumn();
 
-        return $name === false ? null : (string) $name;
+        return $name === false ? null : $name;
     }
 
     public function userById(int $id): ?array
@@ -41,10 +40,9 @@ final class RunnableQueries
 
         $statement->execute(['id' => $id]);
 
-        // @mago-ignore analysis:mixed-assignment
         $row = $statement->fetch(PDO::FETCH_ASSOC);
 
-        return is_array($row) ? $row : null;
+        return $row === false ? null : $row;
     }
 
     public function renameUser(int $id, string $name): int
@@ -69,9 +67,8 @@ final class RunnableQueries
             return 0;
         }
 
-        // @mago-ignore analysis:mixed-assignment
         $count = $statement->fetchColumn();
 
-        return $count === false ? 0 : (int) $count;
+        return $count === false ? 0 : $count;
     }
 }
