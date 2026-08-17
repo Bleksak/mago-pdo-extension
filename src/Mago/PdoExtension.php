@@ -4,8 +4,14 @@ declare(strict_types=1);
 
 namespace Bleksak\MagoPdoExtension\Mago;
 
+use Bleksak\MagoPdoExtension\Mago\Analyzer\QueryAnalyzerPlugin;
 use Mago\Sdk\Extension;
 
+/**
+ * The extension entrypoint loaded by the Mago worker.
+ *
+ * @api
+ */
 final class PdoExtension
 {
     private function __construct() {}
@@ -16,7 +22,7 @@ final class PdoExtension
             identifier: 'bleksak/mago-pdo-extension',
             name: 'PDO Extension',
             version: '0.0.1',
-            analyzerPlugins: [],
+            analyzerPlugins: [new QueryAnalyzerPlugin()],
         );
     }
 }

@@ -3,9 +3,10 @@
 php-version = "8.5.0"
 
 [source]
-paths = ["src", "bin", "tests"]
+paths = ["src", "bin", "tests/Unit"]
 includes = ["vendor", "var"]
 excludes = [
+  "vendor/carthage-software/mago/crates/syntax/tests/fixtures/*",
   "vendor/nikic/fast-route/test",
   "vendor/composer/autoload_classmap.php",
   # "vendor/google/common-protos/metadata",
@@ -28,7 +29,7 @@ line-before-binary-operator = true
 indent-binary-expression-continuation = true
 
 [linter]
-integrations = ["symfony", "amphp", "phpunit", "doctrine"]
+integrations = ["symfony", "phpunit"]
 
 [linter.rules]
 too-many-properties = { "enabled" = false }
@@ -46,6 +47,7 @@ no-variable-variable = { enabled = true }
 no-else-clause = { enabled = false }
 no-shorthand-ternary = { enabled = false }
 assert-description = { enabled = false }
+assertion-style = { style = "self" }
 trait-name = { psr = true }
 interface-name = { psr = true }
 class-name = { psr = true }

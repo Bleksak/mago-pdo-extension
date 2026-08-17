@@ -1,2 +1,5 @@
 vendor
 .pi
+
+.phpunit.cache/
+tests/corpus/.corpus.sqlite

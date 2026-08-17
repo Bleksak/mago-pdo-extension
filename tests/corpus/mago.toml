@@ -1,0 +1,12 @@
+version = "1"
+php-version = "8.4"
+
+[source]
+paths = ["src"]
+
+[analyzer]
+plugins = ["standard", "std", "php-stdlib"]
+
+[extension-hosts.pdo]
+command = ["php", "worker.php"]
+workers = 1
