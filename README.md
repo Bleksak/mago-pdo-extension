@@ -83,7 +83,7 @@ back to the native (unrefined) types, so the extension never reports a wrong typ
 ## Using it in your own project
 
 The extension is a regular Composer library (`bleksak/mago-pdo-extension`). A consuming project
-needs three things:
+needs two things:
 
 1. **Require the package** from the GitHub repository:
 
@@ -118,26 +118,13 @@ needs three things:
    }
    ```
 
-2. **A project-owned worker entrypoint**, e.g. `.mago/worker.php`:
-
-   ```php
-   <?php
-
-   declare(strict_types=1);
-
-   use Bleksak\MagoPdoExtension\Mago\PdoExtension;
-   use Mago\Sdk\Worker;
-
-   require dirname(__DIR__) . '/vendor/autoload.php';
-
-   (new Worker(PdoExtension::create()))->run();
-   ```
-
-3. **An extension host in `mago.toml`**, plus the database connection for the worker:
+2. **An extension host in `mago.toml`**, plus the database connection for the worker. The
+   package ships a ready-made worker entrypoint, so there is nothing to create — just point the
+   host at `vendor/bleksak/mago-pdo-extension/.mago/pdo-worker.php`:
 
    ```toml
    [extension-hosts.pdo]
-   command = ["php", ".mago/worker.php"]
+   command = ["php", "vendor/bleksak/mago-pdo-extension/.mago/pdo-worker.php"]
    environment = { MAGO_PDO_EXTENSION_SQLITE_PATH = "db/analysis.sqlite" }
    ```
 
