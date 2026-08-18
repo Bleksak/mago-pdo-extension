@@ -14,6 +14,8 @@ enum SelectedColumnKind
     case Star;
     case Column;
     case Count;
+    case Concat;
+    case Case;
     case LiteralInt;
     case LiteralString;
     case LiteralNull;

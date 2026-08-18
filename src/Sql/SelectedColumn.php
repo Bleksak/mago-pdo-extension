@@ -11,11 +11,18 @@ namespace Bleksak\MagoPdoExtension\Sql;
  */
 final class SelectedColumn
 {
+    /**
+     * @param list<SelectedColumn>|null $operands Expression arguments for
+     * Concat and Case columns, null for everything else.
+     */
     public function __construct(
         public string $key,
         public SelectedColumnKind $kind,
         public ?string $column = null,
+        public ?string $qualifiedBy = null,
         public ?int $literalInt = null,
         public ?string $literalString = null,
+        public ?array $operands = null,
+        public bool $hasElse = false,
     ) {}
 }

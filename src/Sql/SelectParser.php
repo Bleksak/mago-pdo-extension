@@ -6,13 +6,15 @@ namespace Bleksak\MagoPdoExtension\Sql;
 
 use Bleksak\MagoPdoExtension\Mago\Analyzer\ExplainableQuery;
 
+use function array_map;
+use function count;
 use function ctype_alnum;
 use function ctype_alpha;
-use function ltrim;
+use function explode;
+use function in_array;
 use function preg_match;
 use function str_contains;
 use function str_ends_with;
-use function str_starts_with;
 use function strcasecmp;
 use function strlen;
 use function strtolower;
@@ -22,17 +24,50 @@ use function trim;
 /**
  * Parses a conservative subset of SELECT statements.
  *
- * Only single-table SELECT queries are supported. Anything the parser
- * cannot understand yields null so callers can fall back to unrefined
- * types instead of risking a wrong one.
+ * Supported shapes:
+ * - SELECT <columns> FROM <table> with INNER, CROSS or LEFT [OUTER] JOIN
+ * chains and optional table aliases
+ * - * and qualified <table>.* column lists
+ * - Bare and qualified column references, aliased with or without AS
+ * - Integer, string and NULL literals
+ * - COUNT(*) and COUNT(<column>)
+ * - CONCAT(<args>) and CONCAT_WS(<args>)
+ * - CASE ... END with WHEN/THEN/ELSE branches
+ *
+ * Anything else — UNION, comma joins, RIGHT/FULL joins, derived tables,
+ * subqueries, GROUP BY with aggregates other than COUNT, unknown
+ * expressions — yields null so callers can fall back to unrefined types
+ * instead of risking a wrong one.
  *
  * @internal
  */
 final class SelectParser
 {
+    private const array FROM_SECTION_ENDINGS = [
+        'WHERE',
+        'GROUP',
+        'HAVING',
+        'ORDER',
+        'LIMIT',
+        'FOR',
+    ];
+
+    private const array TABLE_REF_ENDINGS = [
+        'ON',
+        'LEFT',
+        'RIGHT',
+        'INNER',
+        'CROSS',
+        'FULL',
+    ];
+
     public static function parse(string $sql): ?SelectQuery
     {
         $statement = trim(ExplainableQuery::firstStatement($sql));
+
+        if (self::topLevelKeyword($statement, 'UNION') !== null) {
+            return null;
+        }
 
         $matches = [];
 
@@ -55,19 +90,30 @@ final class SelectParser
         [$fromStart, $fromEnd] = $from;
 
         $columnList = trim(substr($rest, 0, $fromStart));
-        $table = self::parseTable(ltrim(substr($rest, $fromEnd)));
+        $fromSection = substr($rest, $fromEnd);
 
-        if ($table === null) {
+        $ending = self::topLevelKeywordAny(
+            $fromSection,
+            self::FROM_SECTION_ENDINGS,
+        );
+
+        if ($ending !== null) {
+            $fromSection = substr($fromSection, 0, $ending[0]);
+        }
+
+        $tables = self::parseTableSection($fromSection);
+
+        if ($tables === null || $tables === []) {
             return null;
         }
 
-        $columns = self::parseColumnList($columnList, $table);
+        $columns = self::parseColumnList($columnList);
 
         if ($columns === null) {
             return null;
         }
 
-        return new SelectQuery($table, $columns);
+        return new SelectQuery($tables, $columns);
     }
 
     /**
@@ -77,8 +123,38 @@ final class SelectParser
         string $sql,
         string $keyword,
     ): ?array {
+        return self::topLevelKeywordAny($sql, [$keyword]);
+    }
+
+    /**
+     * @param list<string> $keywords
+     *
+     * @return array{0: int, 1: int}|null Start and end offsets of the first matching keyword.
+     */
+    private static function topLevelKeywordAny(
+        string $sql,
+        array $keywords,
+    ): ?array {
+        $lower = array_map('strtolower', $keywords);
+
+        foreach (self::topLevelWords($sql) as $word) {
+            if (in_array($word[0], $lower, true)) {
+                return [$word[1], $word[2]];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * All identifier-like words at paren depth zero, outside quotes.
+     *
+     * @return list<array{0: string, 1: int, 2: int}> Lowercased word, start and end offsets.
+     */
+    private static function topLevelWords(string $sql): array
+    {
+        $words = [];
         $length = strlen($sql);
-        $keywordLength = strlen($keyword);
         $depth = 0;
         $inSingle = false;
         $inDouble = false;
@@ -147,65 +223,151 @@ final class SelectParser
                 $wordEnd++;
             }
 
-            if (
-                ($wordEnd - $offset) === $keywordLength
-                && strtolower(substr(
-                    $sql,
-                    $offset,
-                    $keywordLength,
-                )) === strtolower($keyword)
-            ) {
-                return [$offset, $wordEnd];
-            }
+            $words[] = [
+                strtolower(substr($sql, $offset, $wordEnd - $offset)),
+                $offset,
+                $wordEnd,
+            ];
 
             $offset = $wordEnd - 1;
         }
 
-        return null;
+        return $words;
     }
 
-    private static function parseTable(string $clause): ?string
+    /**
+     * @return list<SourceTable>|null
+     */
+    private static function parseTableSection(string $section): ?array
     {
+        $joins = self::joinOccurrences($section);
+
+        $tables = [];
+        $position = 0;
+        $previousType = null;
+
+        foreach ($joins as $join) {
+            $range = substr($section, $position, $join['start'] - $position);
+            $position = $join['end'];
+
+            $table = self::parseTableRef($range, $previousType);
+
+            if ($table === null) {
+                return null;
+            }
+
+            $tables[] = $table;
+            $previousType = $join['type'];
+        }
+
+        $table = self::parseTableRef(
+            substr($section, $position),
+            $previousType,
+        );
+
+        if ($table === null) {
+            return null;
+        }
+
+        $tables[] = $table;
+
+        return $tables;
+    }
+
+    /**
+     * Top-level JOIN keywords with the join type that precedes them.
+     *
+     * @return list<array{start: int, end: int, type: string}>
+     */
+    private static function joinOccurrences(string $section): array
+    {
+        $joins = [];
+        $words = self::topLevelWords($section);
+
+        foreach ($words as $index => $word) {
+            if ($word[0] !== 'join') {
+                continue;
+            }
+
+            $first = $words[$index - 1] ?? null;
+            $second = $words[$index - 2] ?? null;
+
+            $type = 'inner';
+
+            if ($first !== null) {
+                $type =
+                    $first[0] === 'outer' && $second !== null
+                        ? $second[0]
+                        : $first[0];
+            }
+
+            $joins[] = [
+                'start' => $word[1],
+                'end' => $word[2],
+                'type' => $type,
+            ];
+        }
+
+        return $joins;
+    }
+
+    /**
+     * @param string|null $joinType The join type joining this table, if any.
+     */
+    private static function parseTableRef(
+        string $range,
+        ?string $joinType,
+    ): ?SourceTable {
+        if (
+            $joinType !== null
+            && in_array($joinType, ['right', 'full'], true)
+        ) {
+            return null;
+        }
+
+        $boundary = self::topLevelKeywordAny($range, self::TABLE_REF_ENDINGS);
+        $ref = $boundary === null
+            ? trim($range)
+            : trim(substr($range, 0, $boundary[0]));
+
+        if ($ref === '' || str_contains($ref, ',')) {
+            return null;
+        }
+
         $matches = [];
 
         if (
-            preg_match('/^(`?)([A-Za-z_][A-Za-z0-9_]*)\1/', $clause, $matches)
-            !== 1
+            preg_match(
+                '/^`?([A-Za-z_][A-Za-z0-9_]*)`?(?:\s+(?:AS\s+)?`?([A-Za-z_][A-Za-z0-9_]*)`?)?$/i',
+                $ref,
+                $matches,
+            ) !== 1
         ) {
             return null;
         }
 
-        $whole = $matches[0] ?? null;
-        $name = $matches[2] ?? null;
+        $name = $matches[1] ?? null;
 
-        if ($whole === null || $name === null) {
+        if ($name === null) {
             return null;
         }
 
-        $rest = ltrim(substr($clause, strlen($whole)));
-
-        if (
-            str_starts_with($rest, '(')
-            || str_starts_with($rest, ',')
-            || preg_match('/\b(?:JOIN|UNION)\b/i', $rest)
-        ) {
-            return null;
-        }
-
-        return $name;
+        return new SourceTable(
+            $name,
+            $matches[2] ?? null,
+            $joinType === 'left',
+        );
     }
 
     /**
      * @return list<SelectedColumn>|null
      */
-    private static function parseColumnList(
-        string $columnList,
-        string $table,
-    ): ?array {
+    private static function parseColumnList(string $columnList): ?array
+    {
         $columns = [];
 
         foreach (self::splitTopLevel($columnList) as $part) {
-            $column = self::parseColumn(trim($part), $table);
+            $column = self::parseColumn(trim($part));
 
             if ($column === null) {
                 return null;
@@ -219,6 +381,292 @@ final class SelectParser
         }
 
         return $columns;
+    }
+
+    private static function parseColumn(string $raw): ?SelectedColumn
+    {
+        if ($raw === '') {
+            return null;
+        }
+
+        [$expression, $alias] = self::splitAlias($raw);
+
+        if ($expression === '*') {
+            return new SelectedColumn($alias ?? '*', SelectedColumnKind::Star);
+        }
+
+        $matches = [];
+
+        if (
+            preg_match(
+                '/^`?([A-Za-z_][A-Za-z0-9_]*)`?\.\*$/',
+                $expression,
+                $matches,
+            ) === 1
+        ) {
+            $prefix = $matches[1] ?? null;
+
+            if ($prefix === null) {
+                return null;
+            }
+
+            return new SelectedColumn(
+                $alias ?? '*',
+                SelectedColumnKind::Star,
+                qualifiedBy: $prefix,
+            );
+        }
+
+        $column = self::parseExpression($expression);
+
+        if ($column === null) {
+            return null;
+        }
+
+        $column->key = $alias ?? $column->key;
+
+        return $column;
+    }
+
+    /**
+     * Classifies a single expression. The key is a placeholder that the
+     * caller replaces when an alias applies.
+     */
+    private static function parseExpression(string $expression): ?SelectedColumn
+    {
+        $matches = [];
+
+        if (preg_match('/^[+-]?\d+$/', $expression, $matches) === 1) {
+            return new SelectedColumn(
+                $expression,
+                SelectedColumnKind::LiteralInt,
+                literalInt: (int) $expression,
+            );
+        }
+
+        if (preg_match("/^'([^']*)'$/s", $expression, $matches) === 1) {
+            return new SelectedColumn(
+                $expression,
+                SelectedColumnKind::LiteralString,
+                literalString: $matches[1] ?? '',
+            );
+        }
+
+        if (strcasecmp($expression, 'NULL') === 0) {
+            return new SelectedColumn('NULL', SelectedColumnKind::LiteralNull);
+        }
+
+        if (
+            preg_match(
+                '/^COUNT\s*\(\s*(\*|`?[A-Za-z_][A-Za-z0-9_]*`?(?:\.`?[A-Za-z_][A-Za-z0-9_]*`?)?)\s*\)$/i',
+                $expression,
+                $matches,
+            ) === 1
+        ) {
+            $inner = $matches[1] ?? '*';
+            $innerColumn = $inner === '*'
+                ? null
+                : self::unquote(
+                    explode('.', $inner)[count(explode('.', $inner)) - 1] ?? '',
+                );
+
+            return new SelectedColumn(
+                $expression,
+                SelectedColumnKind::Count,
+                column: $innerColumn,
+            );
+        }
+
+        if (
+            preg_match(
+                '/^(?:CONCAT|CONCAT_WS)\s*\((.*)\)$/is',
+                $expression,
+                $matches,
+            ) === 1
+        ) {
+            $operands = self::parseOperandList($matches[1] ?? '');
+
+            if ($operands === null) {
+                return null;
+            }
+
+            return new SelectedColumn(
+                $expression,
+                SelectedColumnKind::Concat,
+                operands: $operands,
+            );
+        }
+
+        if (
+            preg_match('/^CASE\s+(.*)\s*END$/is', $expression, $matches) === 1
+        ) {
+            $branches = self::parseCaseBranches($matches[1] ?? '');
+
+            if ($branches === null) {
+                return null;
+            }
+
+            return new SelectedColumn(
+                $expression,
+                SelectedColumnKind::Case,
+                operands: $branches[0],
+                hasElse: $branches[1],
+            );
+        }
+
+        if (
+            preg_match(
+                '/^`?([A-Za-z_][A-Za-z0-9_]*)`?(?:\.`?([A-Za-z_][A-Za-z0-9_]*)`?)?$/',
+                $expression,
+                $matches,
+            ) === 1
+        ) {
+            $first = $matches[1] ?? null;
+            $second = $matches[2] ?? null;
+
+            if ($first === null) {
+                return null;
+            }
+
+            $column = $second ?? $first;
+
+            return new SelectedColumn(
+                $column,
+                SelectedColumnKind::Column,
+                column: $column,
+                qualifiedBy: $second === null ? null : $first,
+            );
+        }
+
+        return new SelectedColumn(
+            trim($expression),
+            SelectedColumnKind::Expression,
+        );
+    }
+
+    /**
+     * @return list<SelectedColumn>|null
+     */
+    private static function parseOperandList(string $list): ?array
+    {
+        $operands = [];
+
+        foreach (self::splitTopLevel($list) as $part) {
+            $part = trim($part);
+
+            if ($part === '') {
+                return null;
+            }
+
+            $operand = self::parseExpression($part);
+
+            if ($operand === null) {
+                return null;
+            }
+
+            $operands[] = $operand;
+        }
+
+        if ($operands === []) {
+            return null;
+        }
+
+        return $operands;
+    }
+
+    /**
+     * @return array{0: list<SelectedColumn>, 1: bool}|null Branches and whether an ELSE exists.
+     */
+    private static function parseCaseBranches(string $body): ?array
+    {
+        $keywords = self::topLevelKeywordList($body, ['when', 'then', 'else']);
+
+        $branches = [];
+        $hasElse = false;
+        $position = 0;
+        $count = count($keywords);
+
+        while ($position < $count) {
+            $keyword = $keywords[$position] ?? null;
+
+            if ($keyword === null) {
+                break;
+            }
+
+            if ($keyword[0] === 'when') {
+                $then = $keywords[$position + 1] ?? null;
+
+                if ($then === null || $then[0] !== 'then') {
+                    return null;
+                }
+
+                $next = $keywords[$position + 2] ?? null;
+                $branchEnd = $next === null ? strlen($body) : $next[1];
+                $operand = self::parseExpression(trim(substr(
+                    $body,
+                    $then[2],
+                    $branchEnd - $then[2],
+                )));
+
+                if ($operand === null) {
+                    return null;
+                }
+
+                $branches[] = $operand;
+                $position += 2;
+
+                continue;
+            }
+
+            if ($keyword[0] === 'else') {
+                if ($position !== ($count - 1)) {
+                    return null;
+                }
+
+                $operand = self::parseExpression(trim(substr(
+                    $body,
+                    $keyword[2],
+                )));
+
+                if ($operand === null) {
+                    return null;
+                }
+
+                $branches[] = $operand;
+                $hasElse = true;
+                $position++;
+
+                continue;
+            }
+
+            return null;
+        }
+
+        if ($branches === []) {
+            return null;
+        }
+
+        return [$branches, $hasElse];
+    }
+
+    /**
+     * @param list<string> $keywords
+     *
+     * @return list<array{0: string, 1: int, 2: int}>
+     */
+    private static function topLevelKeywordList(
+        string $sql,
+        array $keywords,
+    ): array {
+        $result = [];
+
+        foreach (self::topLevelWords($sql) as $word) {
+            if (in_array($word[0], $keywords, true)) {
+                $result[] = $word;
+            }
+        }
+
+        return $result;
     }
 
     /**
@@ -303,116 +751,6 @@ final class SelectParser
         return $parts;
     }
 
-    private static function parseColumn(
-        string $raw,
-        string $table,
-    ): ?SelectedColumn {
-        if ($raw === '') {
-            return null;
-        }
-
-        [$expression, $alias] = self::splitAlias($raw);
-
-        if ($expression === '*') {
-            return new SelectedColumn($alias ?? '*', SelectedColumnKind::Star);
-        }
-
-        $matches = [];
-
-        if (
-            preg_match(
-                '/^`?([A-Za-z_][A-Za-z0-9_]*)`?\.\*$/',
-                $expression,
-                $matches,
-            ) === 1
-        ) {
-            $prefix = $matches[1] ?? null;
-
-            if ($prefix === null || $prefix !== $table) {
-                return null;
-            }
-
-            return new SelectedColumn($alias ?? '*', SelectedColumnKind::Star);
-        }
-
-        if (preg_match('/^[+-]?\d+$/', $expression, $matches)) {
-            return new SelectedColumn(
-                $alias ?? $expression,
-                SelectedColumnKind::LiteralInt,
-                literalInt: (int) $expression,
-            );
-        }
-
-        $matches = [];
-
-        if (preg_match("/^'([^']*)'$/s", $expression, $matches) === 1) {
-            return new SelectedColumn(
-                $alias ?? $expression,
-                SelectedColumnKind::LiteralString,
-                literalString: $matches[1] ?? '',
-            );
-        }
-
-        if (strcasecmp($expression, 'NULL') === 0) {
-            return new SelectedColumn(
-                $alias ?? 'NULL',
-                SelectedColumnKind::LiteralNull,
-            );
-        }
-
-        $matches = [];
-
-        if (
-            preg_match(
-                '/^COUNT\s*\(\s*(\*|`?[A-Za-z_][A-Za-z0-9_]*`?)\s*\)$/i',
-                $expression,
-                $matches,
-            ) === 1
-        ) {
-            $inner = $matches[1] ?? '*';
-
-            return new SelectedColumn(
-                $alias ?? $expression,
-                SelectedColumnKind::Count,
-                column: $inner === '*' ? null : self::unquote($inner),
-            );
-        }
-
-        $matches = [];
-
-        if (
-            preg_match(
-                '/^`?([A-Za-z_][A-Za-z0-9_]*)`?(?:\.`?([A-Za-z_][A-Za-z0-9_]*)`?)?$/',
-                $expression,
-                $matches,
-            ) === 1
-        ) {
-            $first = $matches[1] ?? null;
-            $second = $matches[2] ?? null;
-
-            if ($first === null) {
-                return null;
-            }
-
-            $column = $second ?? $first;
-
-            if ($second !== null && $first !== $table) {
-                return null;
-            }
-
-            return new SelectedColumn(
-                $alias ?? $column,
-                SelectedColumnKind::Column,
-                column: $column,
-            );
-        }
-
-        return new SelectedColumn(
-            $alias ?? trim($expression),
-            SelectedColumnKind::Expression,
-        );
-    }
-
     /**
      * Splits a trailing alias off a column expression.
      *
@@ -426,7 +764,7 @@ final class SelectParser
 
         if (
             preg_match(
-                '/^(.*\S)\s+AS\s+(`?[A-Za-z_][A-Za-z0-9_]*`?)\s*$/i',
+                '/^(.*\S)\s+AS\s+(`?[A-Za-z_][A-Za-z0-9_]*`?)\s*$/is',
                 $trimmed,
                 $matches,
             ) === 1

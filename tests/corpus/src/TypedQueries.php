@@ -152,6 +152,47 @@ final class TypedQueries
         $this->expectStringOrNull($row['email']);
     }
 
+    public function leftJoinedOrderUserId(): void
+    {
+        $statement = $this->pdo->query(
+            'SELECT u.name, o.user_id '
+            . 'FROM users u '
+            . 'LEFT JOIN orders o ON o.user_id = u.id',
+        );
+
+        foreach ($statement->fetchAll() as $row) {
+            $this->expectString($row['name']);
+            $this->expectIntOrNull($row['user_id']);
+        }
+    }
+
+    public function concatenatedName(): void
+    {
+        $statement = $this->pdo->query(
+            "SELECT CONCAT(u.name, '!') AS label FROM users u",
+        );
+
+        $label = $statement->fetchColumn();
+
+        if ($label !== false) {
+            $this->expectString($label);
+        }
+    }
+
+    public function caseLabel(): void
+    {
+        $statement = $this->pdo->query(
+            "SELECT CASE WHEN u.email IS NULL THEN 'no' ELSE 'yes' END AS label "
+            . 'FROM users u',
+        );
+
+        $label = $statement->fetchColumn();
+
+        if ($label !== false) {
+            $this->expectString($label);
+        }
+    }
+
     private function expectString(string $value): string
     {
         return $value;
@@ -163,6 +204,11 @@ final class TypedQueries
     }
 
     private function expectStringOrNull(?string $value): ?string
+    {
+        return $value;
+    }
+
+    private function expectIntOrNull(?int $value): ?int
     {
         return $value;
     }

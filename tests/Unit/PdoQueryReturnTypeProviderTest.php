@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Bleksak\MagoPdoExtension\Tests;
 
 use Bleksak\MagoPdoExtension\Mago\Analyzer\Providers\PdoQueryReturnTypeProvider;
+use Bleksak\MagoPdoExtension\Mago\Analyzer\Providers\StatementShape;
 use Bleksak\MagoPdoExtension\Services\ConnectionProvider;
 use Closure;
 use Mago\Sdk\Analyzer\Argument;
@@ -62,6 +63,11 @@ final class PdoQueryReturnTypeProviderTest extends TestCase
             id INTEGER PRIMARY KEY,
             name TEXT NOT NULL,
             email TEXT
+        )');
+        $pdo->exec('CREATE TABLE orders (
+            id INTEGER PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            total REAL NOT NULL
         )');
 
         putenv('MAGO_PDO_EXTENSION_SQLITE_PATH=' . $this->databaseFile);
@@ -183,6 +189,147 @@ final class PdoQueryReturnTypeProviderTest extends TestCase
         self::assertNull($type);
     }
 
+    public function testLeftJoinMakesJoinedColumnsNullable(): void
+    {
+        $type = $this->provider()->getReturnType($this->context(
+            'query',
+            'SELECT u.id, o.total FROM users u LEFT JOIN orders o ON o.user_id = u.id',
+        ));
+
+        self::assertNotNull($type);
+        $shape = self::rowShape($type);
+
+        self::assertNotNull($shape);
+        self::assertSame(
+            ['id' => 'int', 'total' => 'float|null'],
+            self::shapeDescriptions($shape),
+        );
+    }
+
+    public function testInnerJoinKeepsColumnsNonNull(): void
+    {
+        $type = $this->provider()->getReturnType($this->context(
+            'query',
+            'SELECT u.name, o.id FROM users u JOIN orders o ON o.user_id = u.id',
+        ));
+
+        self::assertNotNull($type);
+        $shape = self::rowShape($type);
+
+        self::assertNotNull($shape);
+        self::assertSame(
+            ['name' => 'string', 'id' => 'int'],
+            self::shapeDescriptions($shape),
+        );
+    }
+
+    public function testUnqualifiedColumnFoundInSingleTable(): void
+    {
+        $type = $this->provider()->getReturnType($this->context(
+            'query',
+            'SELECT email FROM users u JOIN orders o ON o.user_id = u.id',
+        ));
+
+        self::assertNotNull($type);
+        $shape = self::rowShape($type);
+
+        self::assertNotNull($shape);
+        self::assertSame(
+            ['email' => 'string|null'],
+            self::shapeDescriptions($shape),
+        );
+    }
+
+    public function testUnqualifiedAmbiguousColumnStaysSilent(): void
+    {
+        // The column exists in both tables, so the query itself is
+        // ambiguous and not runnable: the provider must stay silent.
+        $type = $this->provider()->getReturnType($this->context(
+            'query',
+            'SELECT id FROM users u JOIN orders o ON o.user_id = u.id',
+        ));
+
+        self::assertNull($type);
+    }
+
+    public function testConcatRefinesToString(): void
+    {
+        $type = $this->provider()->getReturnType($this->context(
+            'query',
+            "SELECT CONCAT(u.name, '!', o.id) AS label FROM users u JOIN orders o ON o.user_id = u.id",
+        ));
+
+        self::assertNotNull($type);
+        $shape = self::rowShape($type);
+
+        self::assertNotNull($shape);
+        self::assertSame(
+            ['label' => 'string'],
+            self::shapeDescriptions($shape),
+        );
+    }
+
+    public function testConcatOfNullableColumnIsNullable(): void
+    {
+        $type = $this->provider()->getReturnType($this->context(
+            'query',
+            'SELECT CONCAT(u.name, u.email) AS label FROM users u',
+        ));
+
+        self::assertNotNull($type);
+        $shape = self::rowShape($type);
+
+        self::assertNotNull($shape);
+        self::assertSame(
+            ['label' => 'string|null'],
+            self::shapeDescriptions($shape),
+        );
+    }
+
+    public function testCaseRefinesToBranchType(): void
+    {
+        $type = $this->provider()->getReturnType($this->context(
+            'query',
+            "SELECT CASE WHEN u.id = 1 THEN 'one' ELSE 'many' END AS label FROM users u",
+        ));
+
+        self::assertNotNull($type);
+        $shape = self::rowShape($type);
+
+        self::assertNotNull($shape);
+        self::assertSame(
+            ['label' => 'string'],
+            self::shapeDescriptions($shape),
+        );
+    }
+
+    public function testCaseWithoutElseIsNullable(): void
+    {
+        $type = $this->provider()->getReturnType($this->context(
+            'query',
+            'SELECT CASE WHEN u.email IS NOT NULL THEN u.id END AS label FROM users u',
+        ));
+
+        self::assertNotNull($type);
+        $shape = self::rowShape($type);
+
+        self::assertNotNull($shape);
+        self::assertSame(
+            ['label' => 'int|null'],
+            self::shapeDescriptions($shape),
+        );
+    }
+
+    public function testUnknownQualiferStaysSilent(): void
+    {
+        $type = $this->provider()->getReturnType($this->context(
+            'query',
+            'SELECT o.missing FROM users u JOIN orders o ON o.user_id = u.id',
+        ));
+
+        self::assertNull($type);
+    }
+
     private function provider(): PdoQueryReturnTypeProvider
     {
         return new PdoQueryReturnTypeProvider(new ConnectionProvider());
@@ -268,5 +415,29 @@ final class PdoQueryReturnTypeProviderTest extends TestCase
         }
 
         return null;
+    }
+
+    /**
+     * @return list<array{key: string, type: Type}>|null
+     */
+    private static function rowShape(?Type $type): ?array
+    {
+        return StatementShape::decode($type);
+    }
+
+    /**
+     * @param list<array{key: string, type: Type}> $shape
+     *
+     * @return array<string, string>
+     */
+    private static function shapeDescriptions(array $shape): array
+    {
+        $descriptions = [];
+
+        foreach ($shape as $entry) {
+            $descriptions[$entry['key']] = (string) $entry['type'];
+        }
+
+        return $descriptions;
     }
 }
