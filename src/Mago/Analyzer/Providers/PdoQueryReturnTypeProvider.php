@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bleksak\MagoPdoExtension\Mago\Analyzer\Providers;
 
+use Bleksak\MagoPdoExtension\Mago\Analyzer\ExplainableQuery;
 use Bleksak\MagoPdoExtension\Services\ConnectionProvider;
 use Bleksak\MagoPdoExtension\Services\DbTypeMapper;
 use Bleksak\MagoPdoExtension\Services\SchemaIntrospector;
@@ -16,14 +17,23 @@ use Mago\Sdk\Analyzer\MethodReturnTypeProvider;
 use Mago\Sdk\Analyzer\MethodTarget;
 use Mago\Sdk\Analyzer\ReturnTypeProviderContext;
 use Mago\Sdk\Analyzer\Type;
+use Mago\Sdk\PHPVersion;
 use Override;
 use PDO;
+use PDOException;
 
 use function array_key_exists;
 
 /**
- * Refines the return type of PDO query and prepare calls by encoding the
- * SELECT result shape into the returned PDOStatement type.
+ * Refines the return type of PDO query and prepare calls.
+ *
+ * A query verified as runnable by EXPLAIN against the configured database
+ * refines to a plain PDOStatement: since PHP 8.1, query() and prepare()
+ * throw a PDOException on failure, so they can never return false. For
+ * older PHP versions, `false` remains part of the type.
+ *
+ * When the shape of a SELECT result can be determined, it is encoded into
+ * a PDOStatement type parameter so the fetch methods can refine as well.
  *
  * The provider stays silent (returns null) for anything it cannot
  * verify, so unrefined native types are used as a fallback.
@@ -37,7 +47,7 @@ final class PdoQueryReturnTypeProvider implements MethodReturnTypeProvider
     /**
      * @var array<string, ?Type>
      */
-    private array $shapes = [];
+    private array $types = [];
 
     public function __construct(
         private readonly ConnectionProvider $connections,
@@ -65,8 +75,8 @@ final class PdoQueryReturnTypeProvider implements MethodReturnTypeProvider
             return null;
         }
 
-        if (array_key_exists($query, $this->shapes)) {
-            return $this->shapes[$query];
+        if (array_key_exists($query, $this->types)) {
+            return $this->types[$query];
         }
 
         $context->cancellation->throwIfCancelled();
@@ -74,37 +84,82 @@ final class PdoQueryReturnTypeProvider implements MethodReturnTypeProvider
         $connection = $this->connections->get();
 
         if ($connection === null) {
-            return $this->shapes[$query] = null;
+            return $this->types[$query] = null;
         }
 
+        $driver = (string) $connection->getAttribute(PDO::ATTR_DRIVER_NAME);
+
+        if (!$this->isExplainable($connection, ExplainableQuery::fromQuery(
+            $query,
+            $driver,
+        ))) {
+            return $this->types[$query] = null;
+        }
+
+        $statement = Type::namedObject(StatementShape::STATEMENT_CLASS);
+
+        $shape = $this->rowShape($driver, $query);
+
+        if ($shape !== null) {
+            $statement = Type::namedObject(
+                StatementShape::STATEMENT_CLASS,
+                StatementShape::encode($shape),
+            );
+        }
+
+        // Since PHP 8.1, query() and prepare() throw a PDOException on
+        // failure, so a verified query can never produce a false.
+        if (!$context->phpVersion->isAtLeast(PHPVersion::fromParts(8, 1))) {
+            return $this->types[$query] = Type::union(
+                $statement,
+                Type::false(),
+            );
+        }
+
+        return $this->types[$query] = $statement;
+    }
+
+    private function isExplainable(PDO $connection, ?string $explainable): bool
+    {
+        if ($explainable === null) {
+            return false;
+        }
+
+        try {
+            $explain = $connection->query("EXPLAIN {$explainable}");
+        } catch (PDOException) {
+            return false;
+        }
+
+        if ($explain === false) {
+            return false;
+        }
+
+        $explain->closeCursor();
+
+        return true;
+    }
+
+    /**
+     * @return list<array{key: string, type: Type}>|null
+     */
+    private function rowShape(string $driver, string $query): ?array
+    {
         $select = SelectParser::parse($query);
 
         if ($select === null) {
-            return $this->shapes[$query] = null;
+            return null;
         }
 
         $columns = $this->schema->tableColumns($select->table);
 
         if ($columns === null) {
-            return $this->shapes[$query] = null;
+            return null;
         }
 
-        $mapper =
-            new DbTypeMapper((string) $connection->getAttribute(PDO::ATTR_DRIVER_NAME));
+        $mapper = new DbTypeMapper($driver);
 
-        $shape = self::mapColumns($select, $columns, $mapper);
-
-        if ($shape === null) {
-            return $this->shapes[$query] = null;
-        }
-
-        return $this->shapes[$query] = Type::union(
-            Type::namedObject(
-                StatementShape::STATEMENT_CLASS,
-                StatementShape::encode($shape),
-            ),
-            Type::false(),
-        );
+        return self::mapColumns($select, $columns, $mapper);
     }
 
     /**

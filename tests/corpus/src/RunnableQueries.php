@@ -21,10 +21,6 @@ final class RunnableQueries
     {
         $statement = $this->pdo->query('SELECT name FROM users WHERE id = ?');
 
-        if ($statement === false) {
-            return null;
-        }
-
         $name = $statement->fetchColumn();
 
         return $name === false ? null : $name;
@@ -33,10 +29,6 @@ final class RunnableQueries
     public function userById(int $id): ?array
     {
         $statement = $this->pdo->prepare('SELECT id, name, email FROM users WHERE id = :id');
-
-        if ($statement === false) {
-            return null;
-        }
 
         $statement->execute(['id' => $id]);
 
@@ -49,10 +41,6 @@ final class RunnableQueries
     {
         $statement = $this->pdo->prepare('UPDATE users SET name = ? WHERE id = ?');
 
-        if ($statement === false) {
-            return 0;
-        }
-
         $statement->execute([$name, $id]);
 
         return $statement->rowCount();
@@ -62,10 +50,6 @@ final class RunnableQueries
     {
         // Only the first statement executes, and it is runnable.
         $statement = $this->pdo->query('SELECT COUNT(*) FROM users; DELETE FROM users');
-
-        if ($statement === false) {
-            return 0;
-        }
 
         $count = $statement->fetchColumn();
 

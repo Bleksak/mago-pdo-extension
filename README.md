@@ -43,25 +43,33 @@ Without a valid configuration the plugin stays silent.
 
 When a database is configured, the plugin also registers return type providers for
 `PDO::query()`, `PDO::prepare()`, `PDOStatement::fetch()`, `PDOStatement::fetchColumn()`, and
-`PDOStatement::fetchAll()`. For single-table `SELECT` statements with a literal SQL argument, the
-statement is typed as a parameterized `PDOStatement` carrying the exact row shape:
+`PDOStatement::fetchAll()`. A literal query that is verified as runnable (via `EXPLAIN`)
+refines `PDO::query()` and `PDO::prepare()` to a **non-falsy** `PDOStatement`: since PHP 8.1
+these methods throw a `PDOException` on failure instead of returning `false`, so once the
+query is verified to run, no `false` check is needed. For single-table `SELECT` statements
+the statement is a parameterized `PDOStatement` carrying the exact row shape:
 
 ```php
 $statement = $pdo->query('SELECT id, name, email FROM users');
-// $statement: PDOStatement<array{id: int, name: string, email: string|null}>|false
+// $statement: PDOStatement<array{id: int, name: string, email: string|null}>
 
 $row = $statement->fetch(); // array{id: int, name: string, email: string|null}|false
 ```
 
+DML (`INSERT`/`UPDATE`/`DELETE`) refines to a plain `PDOStatement` (no row shape). On PHP < 8.1,
+where `query()`/`prepare()` can still return `false`, the refined type keeps `|false`.
+
 How it works:
 
-1. the `SELECT` is parsed into a table and column list (only single-table statements without
-   joins, unions, or derived tables are refined),
-2. the table schema is introspected from the configured database (`PRAGMA table_info` for
+1. the query is verified against the configured database with `EXPLAIN` — only runnable
+   statements are refined, anything that fails or cannot be explained is left untouched,
+2. the `SELECT` is parsed into a table and column list (only single-table statements without
+   joins, unions, or derived tables get a row shape),
+3. the table schema is introspected from the configured database (`PRAGMA table_info` for
    SQLite, `information_schema.COLUMNS` for MySQL) and memoized,
-3. column types are mapped to the PHP types PDO actually returns: MySQL follows the declared
+4. column types are mapped to the PHP types PDO actually returns: MySQL follows the declared
    type, SQLite follows its column affinity rules,
-4. the row shape is encoded into a named object parameter on the statement's return type, and
+5. the row shape is encoded into a named object parameter on the statement's return type, and
    decoded again when `fetch()`/`fetchColumn()`/`fetchAll()` is called on that statement.
 
 `SELECT *` is expanded through the schema, `COUNT(*)` becomes `int`, `fetch(PDO::FETCH_OBJ)`

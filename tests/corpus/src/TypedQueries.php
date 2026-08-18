@@ -23,11 +23,9 @@ final class TypedQueries
 
     public function userName(): void
     {
+        // The query is verified as runnable, so on PHP 8.1+ the statement can
+        // never be false and no guard is needed.
         $statement = $this->pdo->query('SELECT name FROM users');
-
-        if ($statement === false) {
-            return;
-        }
 
         $row = $statement->fetch();
 
@@ -42,10 +40,6 @@ final class TypedQueries
     {
         $statement = $this->pdo->query('SELECT email FROM users');
 
-        if ($statement === false) {
-            return;
-        }
-
         $row = $statement->fetch();
 
         if ($row === false) {
@@ -59,10 +53,6 @@ final class TypedQueries
     {
         $statement = $this->pdo->query('SELECT id, name, email FROM users');
 
-        if ($statement === false) {
-            return;
-        }
-
         $row = $statement->fetch(PDO::FETCH_ASSOC);
 
         if ($row === false) {
@@ -75,10 +65,6 @@ final class TypedQueries
     public function userNameIsNotInt(): void
     {
         $statement = $this->pdo->query('SELECT name FROM users');
-
-        if ($statement === false) {
-            return;
-        }
 
         $row = $statement->fetch();
 
@@ -94,10 +80,6 @@ final class TypedQueries
     {
         $statement = $this->pdo->query('SELECT name FROM users');
 
-        if ($statement === false) {
-            return;
-        }
-
         $name = $statement->fetchColumn();
 
         if ($name !== false) {
@@ -109,10 +91,6 @@ final class TypedQueries
     {
         $statement = $this->pdo->query('SELECT COUNT(*) FROM users');
 
-        if ($statement === false) {
-            return 0;
-        }
-
         $count = $statement->fetchColumn();
 
         return $count === false ? 0 : $count;
@@ -121,10 +99,6 @@ final class TypedQueries
     public function allUsers(): void
     {
         $statement = $this->pdo->query('SELECT id, name, email FROM users');
-
-        if ($statement === false) {
-            return;
-        }
 
         $rows = $statement->fetchAll();
 
@@ -139,10 +113,6 @@ final class TypedQueries
     {
         $statement = $this->pdo->query('SELECT name FROM users');
 
-        if ($statement === false) {
-            return;
-        }
-
         $row = $statement->fetch(PDO::FETCH_OBJ);
 
         if ($row === false) {
@@ -155,10 +125,6 @@ final class TypedQueries
     public function preparedName(int $id): void
     {
         $statement = $this->pdo->prepare('SELECT name FROM users WHERE id = ?');
-
-        if ($statement === false) {
-            return;
-        }
 
         $statement->execute([$id]);
 
@@ -174,10 +140,6 @@ final class TypedQueries
     public function userByStar(): void
     {
         $statement = $this->pdo->query('SELECT * FROM users');
-
-        if ($statement === false) {
-            return;
-        }
 
         $row = $statement->fetch();
 
