@@ -1,7 +1,7 @@
 set dotenv-load := false
 
 # The mago binary from the local dev checkout. Override with MAGO_BIN.
-mago := shell('printenv MAGO_BIN || echo /home/bleksak/dev/mago/target/release/mago')
+mago := "mago"
 
 validate:
 	composer validate --no-check-publish

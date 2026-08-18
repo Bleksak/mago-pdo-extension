@@ -23,7 +23,7 @@ final class PdoFactory
         try {
             return match (true) {
                 $connection instanceof SqliteConnectionDto => new PDO(
-                    "sqlite:/{$connection->path}",
+                    "sqlite:{$connection->path}",
                     options: [
                         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                     ],

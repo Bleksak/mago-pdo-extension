@@ -72,6 +72,60 @@ always contains every column of the table, `null` only where the schema allows i
 `false`/empty outcomes are included wherever PDO can return them. Anything unrecognized falls
 back to the native (unrefined) types, so the extension never reports a wrong type.
 
+## Using it in your own project
+
+The extension is a regular Composer library (`bleksak/mago-pdo-extension`). A consuming project
+needs three things:
+
+1. **Require the package** (from Packagist, a git repository, or a path repository for local
+   development):
+
+   ```json
+   {
+       "repositories": [
+           { "type": "path", "url": "/path/to/mago-pdo-extension" }
+       ],
+       "require": {
+           "bleksak/mago-pdo-extension": "@dev"
+       }
+   }
+   ```
+
+2. **A project-owned worker entrypoint**, e.g. `.mago/worker.php`:
+
+   ```php
+   <?php
+
+   declare(strict_types=1);
+
+   use Bleksak\MagoPdoExtension\Mago\PdoExtension;
+   use Mago\Sdk\Worker;
+
+   require dirname(__DIR__) . '/vendor/autoload.php';
+
+   (new Worker(PdoExtension::create()))->run();
+   ```
+
+3. **An extension host in `mago.toml`**, plus the database connection for the worker:
+
+   ```toml
+   [extension-hosts.pdo]
+   command = ["php", ".mago/worker.php"]
+   environment = { MAGO_PDO_EXTENSION_SQLITE_PATH = "db/analysis.sqlite" }
+   ```
+
+   For MySQL, set `MAGO_PDO_EXTENSION_MYSQL_HOST`, `MAGO_PDO_EXTENSION_MYSQL_PORT`,
+   `MAGO_PDO_EXTENSION_MYSQL_USER`, `MAGO_PDO_EXTENSION_MYSQL_PASSWORD`, and
+   `MAGO_PDO_EXTENSION_MYSQL_DATABASE` instead (in the `environment` map, or in the shell
+   environment — the worker inherits it). The SQLite path may be relative (resolved against the
+   worker's working directory) or absolute. The connection is only ever used for `EXPLAIN` and
+   schema introspection, so point it at a read-only replica or a scratch copy of your schema.
+
+No `[analyzer]` configuration is needed: the `pdo/query-analyzer` plugin is enabled by default
+(unless your config sets `disable-default-plugins = true`). `mago extension list --json` shows
+whether the host and extension are up. Without a valid database configuration the extension
+stays completely silent.
+
 ## Testing
 
 Two layers, mirroring the [mago-extension-template](https://github.com/carthage-software/mago-extension-template):
