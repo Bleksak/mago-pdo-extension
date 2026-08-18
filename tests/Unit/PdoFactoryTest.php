@@ -11,6 +11,7 @@ use PDO;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 
+use function basename;
 use function chdir;
 use function file_exists;
 use function getcwd;

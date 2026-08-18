@@ -93,7 +93,7 @@ final class PdoQueryReturnTypeProviderTest extends TestCase
         self::assertNotNull($statement);
         self::assertSame('PDOStatement', $statement->name);
         self::assertNotNull($statement->parameters);
-        self::assertCount(1, $statement->parameters ?? []);
+        self::assertCount(1, $statement->parameters);
     }
 
     public function testVerifiedPrepareRefinesToNonFalsyStatement(): void
