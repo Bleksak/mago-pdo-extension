@@ -1,5 +1,6 @@
 {
     "name": "bleksak/mago-pdo-extension",
+    "description": "Mago PDO extension for validating SQL queries and inferring their return type.",
     "type": "library",
     "license": "MIT",
     "autoload": {
@@ -21,7 +22,7 @@
     "minimum-stability": "dev",
     "prefer-stable": true,
     "require": {
-        "carthage-software/mago": "1.47"
+        "carthage-software/mago": "^1.47"
     },
     "require-dev": {
         "phpunit/phpunit": "^13.3"
