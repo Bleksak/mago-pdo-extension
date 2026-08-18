@@ -75,8 +75,9 @@ How it works:
 
 `SELECT *` is expanded through the schema, `COUNT(*)` becomes `int`, `CONCAT(...)` becomes
 `string`, `CASE ... END` becomes the common type of its branches (nullable without `ELSE`),
-columns from a `LEFT JOIN`ed table are nullable, `fetch(PDO::FETCH_OBJ)` returns the object
-shape, and `fetchAll()` returns `list<row>`.
+columns from a `LEFT JOIN`ed table are nullable, `fetch(PDO::FETCH_OBJ)` and
+`fetch(PDO::FETCH_CLASS)` (which hydrates `stdClass`) return the object shape, and
+`fetchAll()` returns `list<row>`.
 
 The inference is an over-approximation by design: `WHERE` clauses are not evaluated, so a row
 always contains every column of the table, `null` only where the schema allows it, and

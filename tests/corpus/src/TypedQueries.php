@@ -122,6 +122,18 @@ final class TypedQueries
         $this->expectString($row->name);
     }
 
+    public function asFetchedClass(): void
+    {
+        $statement = $this->pdo->query('SELECT id, name FROM users');
+
+        $rows = $statement->fetchAll(PDO::FETCH_CLASS);
+
+        foreach ($rows as $row) {
+            $this->expectInt($row->id);
+            $this->expectString($row->name);
+        }
+    }
+
     public function preparedName(int $id): void
     {
         $statement = $this->pdo->prepare('SELECT name FROM users WHERE id = ?');

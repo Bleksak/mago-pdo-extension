@@ -19,6 +19,7 @@ use Override;
 use PDO;
 
 use function count;
+use function strcasecmp;
 use function strtolower;
 
 /**
@@ -56,8 +57,16 @@ final class PdoStatementFetchReturnTypeProvider implements
 
         // Invocation names are lowercased by the analyzer.
         return match (strtolower($invocation->name)) {
-            'fetch' => self::fetch($columns, $invocation->getArgument(0)),
-            'fetchall' => self::fetchAll($columns, $invocation->getArgument(0)),
+            'fetch' => self::fetch(
+                $columns,
+                $invocation->getArgument(0),
+                $invocation->getArgument(1),
+            ),
+            'fetchall' => self::fetchAll(
+                $columns,
+                $invocation->getArgument(0),
+                $invocation->getArgument(1),
+            ),
             'fetchcolumn' => self::fetchColumn(
                 $columns,
                 $invocation->getArgument(0),
@@ -72,6 +81,7 @@ final class PdoStatementFetchReturnTypeProvider implements
     private static function fetch(
         array $columns,
         ?Argument $modeArgument,
+        ?Argument $classArgument,
     ): ?Type {
         $mode = self::literalInt($modeArgument);
 
@@ -79,7 +89,17 @@ final class PdoStatementFetchReturnTypeProvider implements
             return null;
         }
 
-        $shape = self::shape($columns, $mode ?? PDO::FETCH_ASSOC);
+        if (
+            $mode === PDO::FETCH_CLASS
+            && !self::isStdClassArgument($classArgument)
+        ) {
+            return null;
+        }
+
+        $shape = self::shape(
+            $columns,
+            self::normalizeMode($mode ?? PDO::FETCH_ASSOC),
+        );
 
         if ($shape === null) {
             return null;
@@ -94,6 +114,7 @@ final class PdoStatementFetchReturnTypeProvider implements
     private static function fetchAll(
         array $columns,
         ?Argument $modeArgument,
+        ?Argument $classArgument,
     ): ?Type {
         $mode = self::literalInt($modeArgument);
 
@@ -101,7 +122,17 @@ final class PdoStatementFetchReturnTypeProvider implements
             return null;
         }
 
-        $shape = self::shape($columns, $mode ?? PDO::FETCH_ASSOC);
+        if (
+            $mode === PDO::FETCH_CLASS
+            && !self::isStdClassArgument($classArgument)
+        ) {
+            return null;
+        }
+
+        $shape = self::shape(
+            $columns,
+            self::normalizeMode($mode ?? PDO::FETCH_ASSOC),
+        );
 
         return $shape === null ? null : Type::list($shape);
     }
@@ -147,6 +178,29 @@ final class PdoStatementFetchReturnTypeProvider implements
         }
 
         return $argument->type?->getLiteralInt() ?? false;
+    }
+
+    /**
+     * FETCH_CLASS without a class argument hydrates a stdClass, so the row
+     * shape applies. Any other (or non-literal) class target is unknown.
+     */
+    private static function isStdClassArgument(?Argument $argument): bool
+    {
+        if ($argument === null) {
+            return true;
+        }
+
+        $class = $argument->type?->getLiteralString();
+
+        return $class !== null && strcasecmp($class, 'stdClass') === 0;
+    }
+
+    /**
+     * FETCH_CLASS rows are objects just like FETCH_OBJ rows.
+     */
+    private static function normalizeMode(int $mode): int
+    {
+        return $mode === PDO::FETCH_CLASS ? PDO::FETCH_OBJ : $mode;
     }
 
     /**
