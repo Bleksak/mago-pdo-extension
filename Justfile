@@ -1,7 +1,7 @@
 set dotenv-load := false
 
 # The mago binary from the local dev checkout. Override with MAGO_BIN.
-mago := "mago"
+mago := "./vendor/bin/mago"
 
 validate:
 	composer validate --no-check-publish
