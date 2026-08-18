@@ -85,8 +85,27 @@ back to the native (unrefined) types, so the extension never reports a wrong typ
 The extension is a regular Composer library (`bleksak/mago-pdo-extension`). A consuming project
 needs three things:
 
-1. **Require the package** (from Packagist, a git repository, or a path repository for local
-   development):
+1. **Require the package** from the GitHub repository:
+
+   ```sh
+   composer config repositories.mago-pdo-extension vcs https://github.com/bleksak/mago-pdo-extension
+   composer require bleksak/mago-pdo-extension:dev-master
+   ```
+
+   or in `composer.json`:
+
+   ```json
+   {
+       "repositories": [
+           { "type": "vcs", "url": "https://github.com/bleksak/mago-pdo-extension" }
+       ],
+       "require": {
+           "bleksak/mago-pdo-extension": "dev-master"
+       }
+   }
+   ```
+
+   For local development against a checkout, use a path repository instead:
 
    ```json
    {
