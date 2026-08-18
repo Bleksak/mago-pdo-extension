@@ -88,19 +88,15 @@ needs two things:
 1. **Require the package** from the GitHub repository:
 
    ```sh
-   composer config repositories.mago-pdo-extension vcs https://github.com/bleksak/mago-pdo-extension
-   composer require bleksak/mago-pdo-extension:dev-master
+   composer require bleksak/mago-pdo-extension --dev
    ```
 
    or in `composer.json`:
 
    ```json
    {
-       "repositories": [
-           { "type": "vcs", "url": "https://github.com/bleksak/mago-pdo-extension" }
-       ],
-       "require": {
-           "bleksak/mago-pdo-extension": "dev-master"
+       "require-dev": {
+           "bleksak/mago-pdo-extension": "^0.0.1"
        }
    }
    ```
@@ -112,7 +108,7 @@ needs two things:
        "repositories": [
            { "type": "path", "url": "/path/to/mago-pdo-extension" }
        ],
-       "require": {
+       "require-dev": {
            "bleksak/mago-pdo-extension": "@dev"
        }
    }
