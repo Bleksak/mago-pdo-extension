@@ -128,12 +128,25 @@ needs two things:
    environment = { MAGO_PDO_EXTENSION_SQLITE_PATH = "db/analysis.sqlite" }
    ```
 
-   For MySQL, set `MAGO_PDO_EXTENSION_MYSQL_HOST`, `MAGO_PDO_EXTENSION_MYSQL_PORT`,
-   `MAGO_PDO_EXTENSION_MYSQL_USER`, `MAGO_PDO_EXTENSION_MYSQL_PASSWORD`, and
-   `MAGO_PDO_EXTENSION_MYSQL_DATABASE` instead (in the `environment` map, or in the shell
-   environment — the worker inherits it). The SQLite path may be relative (resolved against the
-   worker's working directory) or absolute. The connection is only ever used for `EXPLAIN` and
-   schema introspection, so point it at a read-only replica or a scratch copy of your schema.
+   For MySQL, use the `MAGO_PDO_EXTENSION_MYSQL_*` variables instead (note that `environment`
+   map values are strings, so the port is quoted):
+
+   ```toml
+   [extension-hosts.pdo]
+   command = ["php", "vendor/bleksak/mago-pdo-extension/.mago/pdo-worker.php"]
+   environment = {
+     MAGO_PDO_EXTENSION_MYSQL_HOST = "127.0.0.1",
+     MAGO_PDO_EXTENSION_MYSQL_PORT = "3306",
+     MAGO_PDO_EXTENSION_MYSQL_USER = "analyzer",
+     MAGO_PDO_EXTENSION_MYSQL_PASSWORD = "secret",
+     MAGO_PDO_EXTENSION_MYSQL_DATABASE = "app",
+   }
+   ```
+
+   The variables can also live in the shell environment instead of the map — the worker
+   inherits it. The SQLite path may be relative (resolved against the worker's working
+   directory) or absolute. The connection is only ever used for `EXPLAIN` and schema
+   introspection, so point it at a read-only replica or a scratch copy of your schema.
 
 No `[analyzer]` configuration is needed: the `pdo/query-analyzer` plugin is enabled by default
 (unless your config sets `disable-default-plugins = true`). `mago extension list --json` shows
