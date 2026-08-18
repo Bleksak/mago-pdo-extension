@@ -91,13 +91,10 @@ final class ExplainableQuery
         }
 
         // MySQL EXPLAIN only reliably accepts literals, so PDO
-        // placeholders are replaced with NULL.
-        $statement = str_replace('?', 'NULL', $statement);
+        // placeholders are replaced with 1. An integer (unlike NULL) is
+        // also accepted in LIMIT clauses, where EXPLAIN rejects NULL.
+        $statement = str_replace('?', '1', $statement);
 
-        return (string) preg_replace(
-            '/(?<!:):[a-zA-Z_]\w*/',
-            'NULL',
-            $statement,
-        );
+        return (string) preg_replace('/(?<!:):[a-zA-Z_]\w*/', '1', $statement);
     }
 }

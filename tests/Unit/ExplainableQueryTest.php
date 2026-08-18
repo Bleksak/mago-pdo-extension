@@ -54,22 +54,32 @@ final class ExplainableQueryTest extends TestCase
             'mysql select normalizes positional placeholder' => [
                 'SELECT * FROM users WHERE id = ?',
                 'mysql',
-                'SELECT * FROM users WHERE id = NULL',
+                'SELECT * FROM users WHERE id = 1',
             ],
             'mysql insert normalizes positional placeholder' => [
                 'INSERT INTO users (name) VALUES (?)',
                 'mysql',
-                'INSERT INTO users (name) VALUES (NULL)',
+                'INSERT INTO users (name) VALUES (1)',
             ],
             'mysql update normalizes named placeholders' => [
                 'UPDATE users SET name = :name WHERE id = :id',
                 'mysql',
-                'UPDATE users SET name = NULL WHERE id = NULL',
+                'UPDATE users SET name = 1 WHERE id = 1',
             ],
             'mysql delete normalizes positional placeholder' => [
                 'DELETE FROM users WHERE id = ?',
                 'mysql',
-                'DELETE FROM users WHERE id = NULL',
+                'DELETE FROM users WHERE id = 1',
+            ],
+            'mysql update normalizes named limit placeholder' => [
+                'UPDATE users SET name = :name WHERE id = :id ORDER BY id LIMIT :limit',
+                'mysql',
+                'UPDATE users SET name = 1 WHERE id = 1 ORDER BY id LIMIT 1',
+            ],
+            'mysql delete normalizes positional limit placeholder' => [
+                'DELETE FROM users ORDER BY id LIMIT ?',
+                'mysql',
+                'DELETE FROM users ORDER BY id LIMIT 1',
             ],
             'mysql with cte' => [
                 'WITH c AS (SELECT 1) SELECT * FROM c',
@@ -151,7 +161,7 @@ final class ExplainableQueryTest extends TestCase
 
     public function testMysqlNamedPlaceholderIsNormalized(): void
     {
-        self::assertSame('SELECT * FROM users WHERE id = NULL AND name = NULL', ExplainableQuery::fromQuery(
+        self::assertSame('SELECT * FROM users WHERE id = 1 AND name = 1', ExplainableQuery::fromQuery(
             'SELECT * FROM users WHERE id = ? AND name = :name',
             'mysql',
         ));
@@ -179,7 +189,7 @@ final class ExplainableQueryTest extends TestCase
             'DELETE FROM t',
             'pgsql',
         ));
-        self::assertSame('SELECT * FROM t WHERE id = NULL', ExplainableQuery::fromQuery(
+        self::assertSame('SELECT * FROM t WHERE id = 1', ExplainableQuery::fromQuery(
             'SELECT * FROM t WHERE id = ?',
             'pgsql',
         ));
