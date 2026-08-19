@@ -12,7 +12,6 @@ use Antlr\Antlr4\Runtime\Parser;
 use Antlr\Antlr4\Runtime\Recognizer;
 use Antlr\Antlr4\Runtime\Utils\BitSet;
 use Override;
-
 /**
  * Records that the parser recovered from at least one syntax error.
  *

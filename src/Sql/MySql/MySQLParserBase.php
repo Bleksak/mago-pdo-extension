@@ -6,7 +6,6 @@ namespace Bleksak\MagoPdoExtension\Sql\MySql;
 
 use Antlr\Antlr4\Runtime\Parser;
 use Antlr\Antlr4\Runtime\TokenStream;
-
 use function in_array;
 
 /**

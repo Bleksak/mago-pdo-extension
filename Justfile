@@ -70,12 +70,3 @@ check: validate format-check test lint analyze corpus
 
 # Full check including the MySQL corpus run (requires the local container).
 check-mysql: check corpus-mysql
-
-# Benchmarks the SQL shape parsers (ANTLR MySQL vs legacy regex), no DB needed.
-bench:
-	php tools/benchmark/bench.php
-
-# Rebuilds the prebuilt ANTLR warm cache committed in gen/ (no DB needed).
-# Run after gen-mysql-grammar; a stale cache is auto-detected via the ATN hash.
-warm-cache:
-	php tools/warmup/build-warm-cache.php

@@ -34,31 +34,20 @@ use Bleksak\MagoPdoExtension\Sql\MySql\Context\SimpleExprUnaryContext;
 use Bleksak\MagoPdoExtension\Sql\MySql\Context\SingleTableContext;
 use Bleksak\MagoPdoExtension\Sql\MySql\Context\SumExprContext;
 use Bleksak\MagoPdoExtension\Sql\MySql\Context\TableFactorContext;
-use Bleksak\MagoPdoExtension\Sql\MySql\Context\TableRefContext;
 use Bleksak\MagoPdoExtension\Sql\MySql\Context\TableReferenceContext;
+use Bleksak\MagoPdoExtension\Sql\MySql\Context\TableRefContext;
 use Bleksak\MagoPdoExtension\Sql\MySql\MySQLLexer;
 use Bleksak\MagoPdoExtension\Sql\MySql\MySQLParser;
-use ReflectionClass;
-use ReflectionProperty;
-use Throwable;
 
 use function count;
-use function dirname;
-use function error_reporting;
-use function file_get_contents;
-use function hash;
-use function is_array;
-use function is_file;
 use function preg_match;
 use function preg_replace_callback;
-use function serialize;
 use function str_ends_with;
 use function str_replace;
 use function str_starts_with;
 use function strcasecmp;
 use function strlen;
 use function substr;
-use function unserialize;
 
 /**
  * Parses a MySQL SELECT statement into the shared SelectQuery model using
@@ -73,19 +62,8 @@ use function unserialize;
  */
 final class MySqlSelectParser
 {
-    public const int WARM_CACHE_VERSION = 1;
-
-    /**
-     * The warm cache check runs once per process: the ANTLR statics are
-     * process-wide, so retrying hydration after the first attempt —
-     * successful or skipped — can never change the outcome.
-     */
-    private static bool $warmCacheTried = false;
-
     public function parse(string $sql): ?SelectQuery
     {
-        self::ensureWarmCache();
-
         $input = self::replaceNamedPlaceholders($sql);
 
         $lexer = new MySQLLexer(InputStream::fromString($input));
@@ -107,107 +85,6 @@ final class MySqlSelectParser
         }
 
         return $this->fromSelect($select);
-    }
-
-    /**
-     * Hydrates the ANTLR static prediction caches from the prebuilt warm
-     * cache shipped with the package, when one exists and matches the
-     * current grammar.
-     *
-     * The generated MySQLParser keeps its DFA and prediction-context caches
-     * as class statics: shared process-wide, but empty in a fresh process,
-     * where every new query shape pays a ~1 s full ATN simulation. The warm
-     * cache (built by tools/warmup/build-warm-cache.php) covers the common
-     * query shapes, dropping covered parses to a few milliseconds.
-     *
-     * Hydration must happen before the first MySQLParser is constructed —
-     * guaranteed here, because parse() is the only place in this package
-     * that constructs one. A missing, stale or corrupt blob is a silent
-     * no-op: this is a performance optimization and must never break
-     * analysis.
-     */
-    public static function ensureWarmCache(?string $path = null): void
-    {
-        if (self::$warmCacheTried) {
-            return;
-        }
-        self::$warmCacheTried = true;
-
-        // The 9k-state ATN graph exceeds unserialize()'s default depth.
-        if (PHP_VERSION_ID < 80_100) {
-            return;
-        }
-
-        $path ??= dirname(__DIR__, 2) . '/gen/mysql-warm-cache.bin';
-
-        if (is_file($path) === false) {
-            return;
-        }
-
-        // A corrupt blob must be a silent no-op: suppress the warnings a
-        // truncated payload would otherwise emit into the analyzer output.
-        $errorLevel = error_reporting(E_ALL & ~E_WARNING);
-
-        try {
-            $data = unserialize((string) file_get_contents($path), [
-                'max_depth' => 1_000_000,
-            ]);
-        } catch (Throwable) {
-            return;
-        } finally {
-            error_reporting($errorLevel);
-        }
-
-        if (
-            !is_array($data)
-            || ($data['version'] ?? null) !== self::WARM_CACHE_VERSION
-            || !isset($data['atn'], $data['dfa'], $data['ctx'])
-        ) {
-            return;
-        }
-
-        // Invalidate the cache when the grammar changed since it was built.
-        // The serialized ATN is an int array in the PHP target.
-        $atnConstant = new ReflectionClass(MySQLParser::class)->getConstant(
-            'SERIALIZED_ATN',
-        );
-        $atnHash = hash('sha256', (string) serialize($atnConstant));
-
-        if (($data['atnHash'] ?? null) !== $atnHash) {
-            return;
-        }
-
-        // A parser constructed before hydration binds its simulators to the
-        // fresh statics; never mix hydrated and fresh caches.
-        if (self::staticValue(MySQLParser::class, 'atn') !== null) {
-            return;
-        }
-
-        self::setStaticValue(MySQLParser::class, 'atn', $data['atn']);
-        self::setStaticValue(MySQLParser::class, 'decisionToDFA', $data['dfa']);
-        self::setStaticValue(
-            MySQLParser::class,
-            'sharedContextCache',
-            $data['ctx'],
-        );
-    }
-
-    private static function staticValue(string $class, string $name): mixed
-    {
-        // No setAccessible: hydration only runs on PHP 8.1+, where
-        // reflection access is unrestricted.
-        $property = new ReflectionProperty($class, $name);
-
-        return $property->getValue();
-    }
-
-    private static function setStaticValue(
-        string $class,
-        string $name,
-        mixed $value,
-    ): void {
-        $property = new ReflectionProperty($class, $name);
-        $property->setValue(null, $value);
     }
 
     /**
@@ -269,7 +146,8 @@ final class MySqlSelectParser
             }
 
             if (
-                $character === '-' && ($sql[$index + 1] ?? '') === '-'
+                ($character === '-'
+                    && ($sql[$index + 1] ?? '') === '-')
                 || $character === '#'
             ) {
                 $comment = true;
@@ -280,15 +158,21 @@ final class MySqlSelectParser
             if (
                 $character === ':'
                 && ($sql[$index - 1] ?? '') !== ':'
-                && preg_match('/[A-Za-z_]/', $sql[$index + 1] ?? '') === 1
+                && preg_match(
+                    '/[A-Za-z_]/',
+                    $sql[$index + 1] ?? '',
+                ) === 1
             ) {
                 $result .= '?';
 
                 $index++;
 
                 while (
-                    ($index + 1) < $length
-                    && preg_match('/[A-Za-z0-9_]/', $sql[$index + 1]) === 1
+                    $index + 1 < $length
+                    && preg_match(
+                        '/[A-Za-z0-9_]/',
+                        $sql[$index + 1],
+                    ) === 1
                 ) {
                     $index++;
                 }
@@ -350,8 +234,9 @@ final class MySqlSelectParser
         return new SelectQuery($tables, $columns);
     }
 
-    private function isCompound(?QueryExpressionBodyContext $body): bool
-    {
+    private function isCompound(
+        ?QueryExpressionBodyContext $body,
+    ): bool {
         if ($body === null) {
             return true;
         }
@@ -395,9 +280,7 @@ final class MySqlSelectParser
             // db.table.*: the qualifier is the table, i.e. the last
             // identifier before the dot-star.
             $identifiers = $wild->identifier();
-            $last = $identifiers === []
-                ? null
-                : $identifiers[count($identifiers) - 1];
+            $last = $identifiers === [] ? null : $identifiers[count($identifiers) - 1];
             $qualifiedBy = $last === null
                 ? null
                 : self::unquoteIdentifier((string) $last->getText());
@@ -435,7 +318,9 @@ final class MySqlSelectParser
         $identifier = $alias->identifier();
 
         if ($identifier !== null) {
-            return self::unquoteIdentifier((string) $identifier->getText());
+            return self::unquoteIdentifier(
+                (string) $identifier->getText(),
+            );
         }
 
         $literal = $alias->textStringLiteral();
@@ -606,7 +491,9 @@ final class MySqlSelectParser
 
             return self::unquoteIdentifier(
                 (string) (
-                    $suffix?->identifier()?->getText() ?? $base->getText() ?? ''
+                    $suffix?->identifier()?->getText()
+                    ?? $base->getText()
+                    ?? ''
                 ),
             );
         }
@@ -721,17 +608,20 @@ final class MySqlSelectParser
     ): ?SelectedColumn {
         if ($simple instanceof SimpleExprColumnRefContext) {
             if ($simple->jsonOperator() !== null) {
-                return new SelectedColumn(
-                    $text,
-                    SelectedColumnKind::Expression,
-                );
+                return new SelectedColumn($text, SelectedColumnKind::Expression);
             }
 
-            return $this->columnRef($simple->columnRef(), $text);
+            return $this->columnRef(
+                $simple->columnRef(),
+                $text,
+            );
         }
 
         if ($simple instanceof SimpleExprFunctionContext) {
-            return $this->functionCall($simple->functionCall(), $text);
+            return $this->functionCall(
+                $simple->functionCall(),
+                $text,
+            );
         }
 
         if ($simple instanceof SimpleExprSumContext) {
@@ -792,10 +682,7 @@ final class MySqlSelectParser
                 return [null, null];
             }
 
-            return [
-                null,
-                self::unquoteIdentifier((string) $identifier->getText()),
-            ];
+            return [null, self::unquoteIdentifier((string) $identifier->getText())];
         }
 
         $base = $qualified->identifier();
@@ -880,8 +767,9 @@ final class MySqlSelectParser
     /**
      * @return array{0: ?string, 1: list<ExprContext>}
      */
-    private function callArguments(FunctionCallContext $context): array
-    {
+    private function callArguments(
+        FunctionCallContext $context,
+    ): array {
         $pure = $context->pureIdentifier();
 
         if ($pure !== null) {
@@ -942,10 +830,8 @@ final class MySqlSelectParser
         ];
     }
 
-    private function sum(
-        ?SumExprContext $context,
-        string $text,
-    ): ?SelectedColumn {
+    private function sum(?SumExprContext $context, string $text): ?SelectedColumn
+    {
         if ($context === null || $context->COUNT_SYMBOL() === null) {
             return new SelectedColumn($text, SelectedColumnKind::Expression);
         }
@@ -1122,16 +1008,20 @@ final class MySqlSelectParser
 
     private static function unquoteIdentifier(string $identifier): string
     {
-        if (
-            str_starts_with($identifier, '`') && str_ends_with($identifier, '`')
-        ) {
-            return str_replace('``', '`', (string) substr($identifier, 1, -1));
+        if (str_starts_with($identifier, '`') && str_ends_with($identifier, '`')) {
+            return str_replace(
+                '``',
+                '`',
+                (string) substr($identifier, 1, -1),
+            );
         }
 
-        if (
-            str_starts_with($identifier, '"') && str_ends_with($identifier, '"')
-        ) {
-            return str_replace('""', '"', (string) substr($identifier, 1, -1));
+        if (str_starts_with($identifier, '"') && str_ends_with($identifier, '"')) {
+            return str_replace(
+                '""',
+                '"',
+                (string) substr($identifier, 1, -1),
+            );
         }
 
         return $identifier;
