@@ -10,6 +10,7 @@ use Antlr\Antlr4\Runtime\IntStream;
 use Antlr\Antlr4\Runtime\Lexer;
 use Antlr\Antlr4\Runtime\Token;
 use Override;
+
 use function in_array;
 use function ord;
 use function strlen;
@@ -156,8 +157,11 @@ abstract class MySQLLexerBase extends Lexer
         $input = $this->input?->LA(1) ?? IntStream::EOF;
 
         if ($this->isSqlModeActive(SqlMode::IgnoreSpace)) {
-            while ($input === ord(' ') || $input === ord("\t")
-                || $input === ord("\r") || $input === ord("\n")
+            while (
+                $input === ord(' ')
+                || $input === ord("\t")
+                || $input === ord("\r")
+                || $input === ord("\n")
             ) {
                 $this->input?->consume();
 

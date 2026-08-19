@@ -15,9 +15,7 @@ use function trim;
  */
 final class SqlModes
 {
-    private function __construct()
-    {
-    }
+    private function __construct() {}
 
     /**
      * @return list<SqlMode>
