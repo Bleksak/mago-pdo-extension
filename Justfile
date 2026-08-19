@@ -3,8 +3,25 @@ set dotenv-load := false
 # The mago binary from the local dev checkout. Override with MAGO_BIN.
 mago := "./vendor/bin/mago"
 
+antlr-version := "4.13.2"
+
 validate:
 	composer validate --no-check-publish
+
+# Regenerates the committed MySQL parser in gen/ from the vendored grammar.
+# Requires a Java runtime; the ANTLR jar is downloaded to tools/ on demand.
+# The grammars are flattened into a build directory first: the parser grammar
+# resolves the lexer's .tokens file relative to the grammar file. The grammar
+# is target-agnostic: its actions use `this.` (Java/C#/JS style), which the
+# PHP target emits verbatim and the ANTLR tool refuses to rewrite, so the
+# generated PHP is post-processed to call the methods as `$this->`.
+gen-mysql-grammar:
+	@if [ ! -f tools/antlr.jar ]; then curl -sSLo tools/antlr.jar https://repo1.maven.org/maven2/org/antlr/antlr4/{{antlr-version}}/antlr4-{{antlr-version}}-complete.jar; fi
+	@mkdir -p tools/grammar-build
+	cp grammars/mysql/MySQLLexer.g4 grammars/mysql/MySQLParser.g4 tools/grammar-build/
+	cd tools/grammar-build && java -jar ../antlr.jar -Dlanguage=PHP -package 'Bleksak\MagoPdoExtension\Sql\MySql' -o ../../gen MySQLLexer.g4 MySQLParser.g4
+	sed -i 's/this\./$this->/g' gen/MySQLLexer.php gen/MySQLParser.php
+	rm -f gen/*.interp gen/*.tokens
 
 test:
 	vendor/bin/phpunit --configuration phpunit.xml

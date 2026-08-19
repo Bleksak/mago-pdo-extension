@@ -5,7 +5,11 @@
     "license": "MIT",
     "autoload": {
         "psr-4": {
-            "Bleksak\\MagoPdoExtension\\": "src/"
+            "Bleksak\\MagoPdoExtension\\": "src/",
+            "Bleksak\\MagoPdoExtension\\Sql\\MySql\\": [
+                "src/Sql/MySql/",
+                "gen/"
+            ]
         }
     },
     "autoload-dev": {
@@ -22,7 +26,8 @@
     "minimum-stability": "dev",
     "prefer-stable": true,
     "require": {
-        "carthage-software/mago": "^1.47"
+        "carthage-software/mago": "^1.47",
+        "antlr/antlr4-php-runtime": "^0.10.0"
     },
     "require-dev": {
         "phpunit/phpunit": "^13.3"

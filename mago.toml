@@ -4,7 +4,9 @@ php-version = "8.5.0"
 
 [source]
 paths = ["src", "tests/Unit"]
-includes = ["vendor"]
+# The ANTLR-generated parser lives outside the source paths: it is analyzed
+# for class resolution only, never for diagnostics.
+includes = ["vendor", "gen"]
 excludes = [
   "vendor/carthage-software/mago/crates/syntax/tests/fixtures/*",
   "vendor/nikic/fast-route/test",

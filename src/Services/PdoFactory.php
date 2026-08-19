@@ -37,7 +37,13 @@ final class PdoFactory
                     ),
                     $connection->username,
                     $connection->password,
-                    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION],
+                    [
+                        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                        // Server-side prepares, so prepare() compiles the
+                        // statement on the server and validates it without
+                        // executing it.
+                        PDO::ATTR_EMULATE_PREPARES => false,
+                    ],
                 ),
             };
         } catch (PDOException) {

@@ -5,17 +5,19 @@ declare(strict_types=1);
 namespace Bleksak\MagoPdoExtension\Mago\Analyzer;
 
 use function preg_match;
-use function preg_replace;
-use function str_replace;
 use function strlen;
 use function substr;
 use function trim;
 
 /**
- * Extracts an EXPLAINable statement from a raw PDO query literal.
+ * Extracts a checkable statement from a raw PDO query literal.
  *
- * The result can be prefixed with `EXPLAIN` and executed against a
- * database to verify the query is runnable in its current form.
+ * The result is the first statement of the query, limited to statement
+ * types the extension verifies: it is checked for runnability against the
+ * database with EXPLAIN (SQLite) or a server-side prepare (MySQL).
+ *
+ * Placeholders are kept as-is: both check mechanisms accept native `?`
+ * and `:name` placeholders.
  *
  * @internal
  */
@@ -23,7 +25,7 @@ final class ExplainableQuery
 {
     private const string SQL_PREFIX = '/^\s*(?:SELECT|INSERT|UPDATE|DELETE|REPLACE|WITH)\b/i';
 
-    public static function fromQuery(string $query, string $driver): ?string
+    public static function fromQuery(string $query): ?string
     {
         $statement = trim(self::firstStatement($query));
 
@@ -31,7 +33,7 @@ final class ExplainableQuery
             return null;
         }
 
-        return self::replacePlaceholders($statement, $driver);
+        return $statement;
     }
 
     /**
@@ -78,23 +80,5 @@ final class ExplainableQuery
     private static function isEscaped(string $query, int $offset): bool
     {
         return $offset > 0 && $query[$offset - 1] === '\\';
-    }
-
-    private static function replacePlaceholders(
-        string $statement,
-        string $driver,
-    ): string {
-        // SQLite natively accepts ? and :name placeholders, so the
-        // statement is used as-is.
-        if ($driver === 'sqlite') {
-            return $statement;
-        }
-
-        // MySQL EXPLAIN only reliably accepts literals, so PDO
-        // placeholders are replaced with 1. An integer (unlike NULL) is
-        // also accepted in LIMIT clauses, where EXPLAIN rejects NULL.
-        $statement = str_replace('?', '1', $statement);
-
-        return (string) preg_replace('/(?<!:):[a-zA-Z_]\w*/', '1', $statement);
     }
 }
