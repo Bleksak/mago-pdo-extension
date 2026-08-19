@@ -1,7 +1,5 @@
 vendor
 .pi
 
-tools/
-
 .phpunit.cache/
 tests/corpus/.corpus.sqlite

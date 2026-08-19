@@ -9,7 +9,6 @@ use Bleksak\MagoPdoExtension\Services\ConnectionProvider;
 use Bleksak\MagoPdoExtension\Services\DbTypeMapper;
 use Bleksak\MagoPdoExtension\Services\SchemaIntrospector;
 use Bleksak\MagoPdoExtension\Sql\ColumnInfo;
-use Bleksak\MagoPdoExtension\Sql\MySqlSelectParser;
 use Bleksak\MagoPdoExtension\Sql\SelectedColumn;
 use Bleksak\MagoPdoExtension\Sql\SelectedColumnKind;
 use Bleksak\MagoPdoExtension\Sql\SelectParser;
@@ -32,17 +31,13 @@ use function strtolower;
 /**
  * Refines the return type of PDO query and prepare calls.
  *
- * A query verified as runnable against the configured database (EXPLAIN on
- * SQLite, a server-side prepare on MySQL) refines to a plain PDOStatement:
- * since PHP 8.1, query() and prepare() throw a PDOException on failure, so
- * they can never return false. For older PHP versions, `false` remains part
- * of the type.
+ * A query verified as runnable by EXPLAIN against the configured database
+ * refines to a plain PDOStatement: since PHP 8.1, query() and prepare()
+ * throw a PDOException on failure, so they can never return false. For
+ * older PHP versions, `false` remains part of the type.
  *
  * When the shape of a SELECT result can be determined, it is encoded into
  * a PDOStatement type parameter so the fetch methods can refine as well.
- * The shape is inferred from the parsed query and the table schemas:
- * MySQL statements are parsed with the ANTLR-generated MySQL parser,
- * SQLite statements with the regex fallback parser.
  *
  * The provider stays silent (returns null) for anything it cannot
  * verify, so unrefined native types are used as a fallback.
@@ -52,7 +47,6 @@ use function strtolower;
 final class PdoQueryReturnTypeProvider implements MethodReturnTypeProvider
 {
     private readonly SchemaIntrospector $schema;
-    private readonly MySqlSelectParser $mysqlParser;
 
     /**
      * @var array<string, ?Type>
@@ -63,7 +57,6 @@ final class PdoQueryReturnTypeProvider implements MethodReturnTypeProvider
         private readonly ConnectionProvider $connections,
     ) {
         $this->schema = new SchemaIntrospector($connections);
-        $this->mysqlParser = new MySqlSelectParser();
     }
 
     #[Override]
@@ -100,28 +93,19 @@ final class PdoQueryReturnTypeProvider implements MethodReturnTypeProvider
 
         $driver = (string) $connection->getAttribute(PDO::ATTR_DRIVER_NAME);
 
-        $statement = ExplainableQuery::fromQuery($query);
-
-        if ($statement === null) {
+        if (!$this->isExplainable($connection, ExplainableQuery::fromQuery(
+            $query,
+            $driver,
+        ))) {
             return $this->types[$query] = null;
         }
 
-        if ($driver === 'mysql') {
-            $runnable = $this->isPreparable($connection, $statement);
-        } else {
-            $runnable = $this->isExplainable($connection, $statement);
-        }
-
-        if (!$runnable) {
-            return $this->types[$query] = null;
-        }
+        $statement = Type::namedObject(StatementShape::STATEMENT_CLASS);
 
         $shape = $this->rowShape($driver, $query);
 
-        $statementType = Type::namedObject(StatementShape::STATEMENT_CLASS);
-
         if ($shape !== null) {
-            $statementType = Type::namedObject(
+            $statement = Type::namedObject(
                 StatementShape::STATEMENT_CLASS,
                 StatementShape::encode($shape),
             );
@@ -131,18 +115,22 @@ final class PdoQueryReturnTypeProvider implements MethodReturnTypeProvider
         // failure, so a verified query can never produce a false.
         if (!$context->phpVersion->isAtLeast(PHPVersion::fromParts(8, 1))) {
             return $this->types[$query] = Type::union(
-                $statementType,
+                $statement,
                 Type::false(),
             );
         }
 
-        return $this->types[$query] = $statementType;
+        return $this->types[$query] = $statement;
     }
 
-    private function isExplainable(PDO $connection, string $statement): bool
+    private function isExplainable(PDO $connection, ?string $explainable): bool
     {
+        if ($explainable === null) {
+            return false;
+        }
+
         try {
-            $explain = $connection->query("EXPLAIN {$statement}");
+            $explain = $connection->query("EXPLAIN {$explainable}");
         } catch (PDOException) {
             return false;
         }
@@ -157,26 +145,11 @@ final class PdoQueryReturnTypeProvider implements MethodReturnTypeProvider
     }
 
     /**
-     * A server-side prepare compiles the statement without executing it,
-     * so a successful prepare proves the statement is runnable.
-     */
-    private function isPreparable(PDO $connection, string $statement): bool
-    {
-        try {
-            return $connection->prepare($statement) !== false;
-        } catch (PDOException) {
-            return false;
-        }
-    }
-
-    /**
      * @return list<array{key: string, type: Type}>|null
      */
     private function rowShape(string $driver, string $query): ?array
     {
-        $select = $driver === 'mysql'
-            ? $this->mysqlParser->parse($query)
-            : SelectParser::parse($query);
+        $select = SelectParser::parse($query);
 
         if ($select === null) {
             return null;

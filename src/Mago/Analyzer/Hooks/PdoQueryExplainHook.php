@@ -17,13 +17,10 @@ use PDO;
 use PDOException;
 
 /**
- * Verifies that literal PDO queries are runnable against the configured database.
+ * Verifies that literal PDO queries are runnable by executing EXPLAIN against the configured database.
  *
- * SQLite statements are checked with EXPLAIN; MySQL statements with a
- * server-side prepare, which compiles them without executing them.
- *
- * Queries built dynamically cannot be checked and are skipped. Statements the check
- * does not support (DDL, PRAGMA, SET, ...) are skipped as well.
+ * Queries built dynamically cannot be checked and are skipped. Statements that EXPLAIN does not
+ * support (DDL, PRAGMA, SET, ...) are skipped as well.
  *
  * @internal
  */
@@ -66,7 +63,7 @@ final class PdoQueryExplainHook implements MethodCallAnalysisHook
         }
 
         $driver = (string) $connection->getAttribute(PDO::ATTR_DRIVER_NAME);
-        $statement = ExplainableQuery::fromQuery($query);
+        $statement = ExplainableQuery::fromQuery($query, $driver);
 
         if ($statement === null) {
             return;
@@ -75,16 +72,10 @@ final class PdoQueryExplainHook implements MethodCallAnalysisHook
         $context->cancellation->throwIfCancelled();
 
         try {
-            if ($driver === 'mysql') {
-                // A server-side prepare compiles the statement without
-                // executing it, and accepts native placeholders as-is.
-                $connection->prepare($statement);
-            } else {
-                $explain = $connection->query("EXPLAIN {$statement}");
+            $explain = $connection->query("EXPLAIN {$statement}");
 
-                if ($explain !== false) {
-                    $explain->closeCursor();
-                }
+            if ($explain !== false) {
+                $explain->closeCursor();
             }
         } catch (PDOException $exception) {
             $context->report(
@@ -94,7 +85,7 @@ final class PdoQueryExplainHook implements MethodCallAnalysisHook
                     "This query is not runnable: {$exception->getMessage()}",
                     $context->node->span,
                 )->withHelp(
-                    'The statement was checked against the configured database.',
+                    'The statement was checked with EXPLAIN against the configured database.',
                 ),
             );
         }

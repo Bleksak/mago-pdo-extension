@@ -12,126 +12,186 @@ use PHPUnit\Framework\TestCase;
 #[CoversClass(ExplainableQuery::class)]
 final class ExplainableQueryTest extends TestCase
 {
-    /** @return array<string, list{string, string}> */
-    public static function checkableQueries(): array
+    /** @return array<string, list{string, string, string}> */
+    public static function explainableQueries(): array
     {
         return [
             'select with positional placeholder' => [
                 'SELECT * FROM users WHERE id = ?',
+                'sqlite',
                 'SELECT * FROM users WHERE id = ?',
-            ],
-            'select with named placeholder' => [
-                'SELECT * FROM users WHERE id = :id',
-                'SELECT * FROM users WHERE id = :id',
             ],
             'lowercase and leading whitespace' => [
                 '  select 1',
+                'sqlite',
                 'select 1',
             ],
             'insert' => [
                 'INSERT INTO users (name) VALUES (?)',
+                'sqlite',
                 'INSERT INTO users (name) VALUES (?)',
             ],
             'update with named placeholders' => [
                 'UPDATE users SET name = :name WHERE id = :id',
+                'sqlite',
                 'UPDATE users SET name = :name WHERE id = :id',
-            ],
-            'update with named limit placeholder' => [
-                'UPDATE users SET name = :name WHERE id = :id ORDER BY id LIMIT :limit',
-                'UPDATE users SET name = :name WHERE id = :id ORDER BY id LIMIT :limit',
-            ],
-            'delete with positional limit placeholder' => [
-                'DELETE FROM users ORDER BY id LIMIT ?',
-                'DELETE FROM users ORDER BY id LIMIT ?',
             ],
             'delete' => [
                 'DELETE FROM users WHERE id = ?',
+                'sqlite',
                 'DELETE FROM users WHERE id = ?',
             ],
             'replace' => [
                 'REPLACE INTO users (name) VALUES (?)',
+                'sqlite',
                 'REPLACE INTO users (name) VALUES (?)',
             ],
             'with cte' => [
                 'WITH c AS (SELECT 1) SELECT * FROM c',
+                'sqlite',
+                'WITH c AS (SELECT 1) SELECT * FROM c',
+            ],
+            'mysql select normalizes positional placeholder' => [
+                'SELECT * FROM users WHERE id = ?',
+                'mysql',
+                'SELECT * FROM users WHERE id = 1',
+            ],
+            'mysql insert normalizes positional placeholder' => [
+                'INSERT INTO users (name) VALUES (?)',
+                'mysql',
+                'INSERT INTO users (name) VALUES (1)',
+            ],
+            'mysql update normalizes named placeholders' => [
+                'UPDATE users SET name = :name WHERE id = :id',
+                'mysql',
+                'UPDATE users SET name = 1 WHERE id = 1',
+            ],
+            'mysql delete normalizes positional placeholder' => [
+                'DELETE FROM users WHERE id = ?',
+                'mysql',
+                'DELETE FROM users WHERE id = 1',
+            ],
+            'mysql update normalizes named limit placeholder' => [
+                'UPDATE users SET name = :name WHERE id = :id ORDER BY id LIMIT :limit',
+                'mysql',
+                'UPDATE users SET name = 1 WHERE id = 1 ORDER BY id LIMIT 1',
+            ],
+            'mysql delete normalizes positional limit placeholder' => [
+                'DELETE FROM users ORDER BY id LIMIT ?',
+                'mysql',
+                'DELETE FROM users ORDER BY id LIMIT 1',
+            ],
+            'mysql with cte' => [
+                'WITH c AS (SELECT 1) SELECT * FROM c',
+                'mysql',
                 'WITH c AS (SELECT 1) SELECT * FROM c',
             ],
             'first statement wins' => [
                 'SELECT 1; DROP TABLE users',
+                'sqlite',
                 'SELECT 1',
             ],
-            'first statement wins with multiple statements' => [
+            'mysql first statement wins' => [
                 'SELECT * FROM users; DELETE FROM users',
+                'mysql',
                 'SELECT * FROM users',
             ],
-            'trailing semicolon' => ['SELECT 1;', 'SELECT 1'],
+            'trailing semicolon' => ['SELECT 1;', 'sqlite', 'SELECT 1'],
         ];
     }
 
-    /** @return array<string, list{string}> */
-    public static function uncheckableQueries(): array
+    /** @return array<string, list{string, string}> */
+    public static function unexplainableQueries(): array
     {
         return [
-            'create table' => ['CREATE TABLE t (a INT)'],
-            'drop table' => ['DROP TABLE t'],
-            'truncate' => ['TRUNCATE t'],
-            'pragma' => ['PRAGMA table_info(users)'],
-            'set' => ['SET @x = 1'],
-            'empty' => [''],
-            'whitespace only' => ['   '],
-            'trailing semicolon only' => [';'],
+            'create table' => ['CREATE TABLE t (a INT)', 'sqlite'],
+            'drop table' => ['DROP TABLE t', 'sqlite'],
+            'pragma' => ['PRAGMA table_info(users)', 'sqlite'],
+            'set' => ['SET @x = 1', 'sqlite'],
+            'empty' => ['', 'sqlite'],
+            'whitespace only' => ['   ', 'sqlite'],
+            'trailing semicolon only' => [';', 'sqlite'],
+            // MySQL has no EXPLAIN for DDL, so it is skipped rather than
+            // reported as unrunnable.
+            'mysql create table' => ['CREATE TABLE t (a INT)', 'mysql'],
+            'mysql drop table' => ['DROP TABLE t', 'mysql'],
+            'mysql truncate' => ['TRUNCATE t', 'mysql'],
         ];
     }
 
-    #[DataProvider('checkableQueries')]
-    public function testCheckableQuery(string $query, string $expected): void
-    {
-        self::assertSame($expected, ExplainableQuery::fromQuery($query));
+    #[DataProvider('explainableQueries')]
+    public function testExplainableQuery(
+        string $query,
+        string $driver,
+        string $expected,
+    ): void {
+        self::assertSame($expected, ExplainableQuery::fromQuery(
+            $query,
+            $driver,
+        ));
     }
 
-    #[DataProvider('uncheckableQueries')]
-    public function testUncheckableQuery(string $query): void
+    #[DataProvider('unexplainableQueries')]
+    public function testUnexplainableQuery(string $query, string $driver): void
     {
-        self::assertNull(ExplainableQuery::fromQuery($query));
+        self::assertNull(ExplainableQuery::fromQuery($query, $driver));
     }
 
     public function testSemicolonInsideQuotesDoesNotSplit(): void
     {
-        self::assertSame(
+        self::assertSame("SELECT 'a;b' FROM users", ExplainableQuery::fromQuery(
             "SELECT 'a;b' FROM users",
-            ExplainableQuery::fromQuery("SELECT 'a;b' FROM users"),
-        );
-        self::assertSame(
+            'sqlite',
+        ));
+        self::assertSame('SELECT "a;b" FROM users', ExplainableQuery::fromQuery(
             'SELECT "a;b" FROM users',
-            ExplainableQuery::fromQuery('SELECT "a;b" FROM users'),
-        );
+            'mysql',
+        ));
     }
 
     public function testBackslashEscapedQuoteDoesNotToggleQuoteState(): void
     {
         $query = "SELECT 'a\\'; DROP TABLE users' FROM t; SELECT 2";
 
-        self::assertSame(
-            "SELECT 'a\\'; DROP TABLE users' FROM t",
-            ExplainableQuery::fromQuery($query),
-        );
+        self::assertSame("SELECT 'a\\'; DROP TABLE users' FROM t", ExplainableQuery::fromQuery(
+            $query,
+            'sqlite',
+        ));
     }
 
-    public function testPlaceholderInsideStringLiteralIsKept(): void
+    public function testMysqlNamedPlaceholderIsNormalized(): void
     {
-        self::assertSame(
-            "SELECT * FROM users WHERE name = 'a?b'",
-            ExplainableQuery::fromQuery(
-                "SELECT * FROM users WHERE name = 'a?b'",
-            ),
-        );
+        self::assertSame('SELECT * FROM users WHERE id = 1 AND name = 1', ExplainableQuery::fromQuery(
+            'SELECT * FROM users WHERE id = ? AND name = :name',
+            'mysql',
+        ));
     }
 
-    public function testDoubleColonIsKept(): void
+    public function testDoubleColonIsNotATypedPlaceholder(): void
     {
-        self::assertSame(
+        self::assertSame('SELECT x::int FROM t', ExplainableQuery::fromQuery(
             'SELECT x::int FROM t',
-            ExplainableQuery::fromQuery('SELECT x::int FROM t'),
-        );
+            'sqlite',
+        ));
+        self::assertSame('SELECT x::int FROM t', ExplainableQuery::fromQuery(
+            'SELECT x::int FROM t',
+            'mysql',
+        ));
+    }
+
+    public function testUnknownDriverNormalizesPlaceholders(): void
+    {
+        self::assertSame('SELECT 1', ExplainableQuery::fromQuery(
+            'SELECT 1',
+            'pgsql',
+        ));
+        self::assertSame('DELETE FROM t', ExplainableQuery::fromQuery(
+            'DELETE FROM t',
+            'pgsql',
+        ));
+        self::assertSame('SELECT * FROM t WHERE id = 1', ExplainableQuery::fromQuery(
+            'SELECT * FROM t WHERE id = ?',
+            'pgsql',
+        ));
     }
 }
