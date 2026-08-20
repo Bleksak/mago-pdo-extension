@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Bleksak\MagoPdoExtension\Tests;
 
 use Bleksak\MagoPdoExtension\Mago\Analyzer\QueryAnalyzerPlugin;
+use Bleksak\MagoPdoExtension\Mago\Linter\Rules\PdoUnrunnableQueryRule;
 use Bleksak\MagoPdoExtension\Mago\PdoExtension;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
@@ -24,5 +25,10 @@ final class PdoExtensionTest extends TestCase
         $plugin = $extension->analyzerPlugins[0] ?? null;
 
         self::assertInstanceOf(QueryAnalyzerPlugin::class, $plugin);
+        self::assertCount(1, $extension->linterRules);
+
+        $rule = $extension->linterRules[0] ?? null;
+
+        self::assertInstanceOf(PdoUnrunnableQueryRule::class, $rule);
     }
 }

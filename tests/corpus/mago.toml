@@ -10,3 +10,8 @@ plugins = ["standard", "std", "php-stdlib"]
 [extension-hosts.pdo]
 command = ["php", "worker.php"]
 workers = 1
+
+[linter.rules]
+# The corpus exercises the extension rule; keep native rule noise out of
+# the check.
+too-many-methods = { enabled = false }

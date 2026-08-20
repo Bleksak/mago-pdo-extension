@@ -7,7 +7,6 @@ namespace Bleksak\MagoPdoExtension\Sql;
 use Bleksak\MagoPdoExtension\Mago\Analyzer\ExplainableQuery;
 use PhpMyAdmin\SqlParser\Components\CaseExpression;
 use PhpMyAdmin\SqlParser\Components\Expression;
-use PhpMyAdmin\SqlParser\Components\JoinKeyword;
 use PhpMyAdmin\SqlParser\Lexer;
 use PhpMyAdmin\SqlParser\Parser;
 use PhpMyAdmin\SqlParser\Statements\SelectStatement;
@@ -90,8 +89,7 @@ final class PmaSelectParser
         foreach ($select->from as $item) {
             // Parity with SelectParser: derived tables are not supported.
             if (
-                $item instanceof Expression === false
-                || $item->table === null
+                $item->table === null
                 || $item->table === ''
                 || $item->subquery !== null
             ) {
@@ -102,10 +100,6 @@ final class PmaSelectParser
         }
 
         foreach ($select->join ?? [] as $join) {
-            if ($join instanceof JoinKeyword === false) {
-                return null;
-            }
-
             $type = strtoupper((string) $join->type);
 
             // RIGHT/FULL joins extend the previous tables with NULL rows.
@@ -163,10 +157,6 @@ final class PmaSelectParser
         $branches = [];
 
         foreach ($case->results as $result) {
-            if ($result instanceof Expression === false) {
-                return null;
-            }
-
             $operand = self::classify($result);
 
             if ($operand === null) {
@@ -215,9 +205,7 @@ final class PmaSelectParser
             $prefix = null;
 
             if (str_ends_with($expr, '.*')) {
-                $prefix = self::unquote(
-                    (string) ($e->table ?? explode('.', $expr)[0] ?? ''),
-                );
+                $prefix = self::unquote($e->table ?? explode('.', $expr)[0]);
             }
 
             return new SelectedColumn(

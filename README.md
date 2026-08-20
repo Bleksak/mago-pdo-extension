@@ -1,27 +1,29 @@
 # Mago PDO Extension
 
-A Mago analyzer extension that verifies PDO queries are runnable in their current form by
-executing `EXPLAIN` against a configured database, and refines the return types of PDO query
-and fetch calls with the exact row shapes of the configured schema.
+A Mago extension that verifies PDO queries are runnable in their current form by
+executing `EXPLAIN` against a configured database (lint rule `pdo/unrunnable-query`), and
+refines the return types of PDO query and fetch calls with the exact row shapes of the
+configured schema (analyzer plugin `pdo/query-analyzer`).
 
 ## How it works
 
-The `pdo/query-analyzer` plugin registers a method-call hook targeting
-`PDO::query()`, `PDO::prepare()`, and `PDO::exec()`. For every call whose first argument is a
-**literal** SQL string, the extension:
+The `pdo/unrunnable-query` lint rule targets `->query()`, `->prepare()`, and `->exec()`
+calls. For every call whose first argument is a **literal** SQL string, the rule:
 
 1. extracts the first top-level statement (only it executes anyway),
 2. skips statements `EXPLAIN` cannot handle (DDL, `PRAGMA`, `SET`, …),
 3. normalizes PDO placeholders (`?`, `:name`) when the driver needs it,
 4. runs `EXPLAIN <statement>` against the configured database and reports
-   `pdo/query-analyzer/unrunnable-query` when it fails.
+   `pdo/unrunnable-query` when it fails.
 
-Dynamically built queries and unexplainable statements are skipped silently.
+Linter rules only see syntax, so calls are matched by method name on any receiver,
+and the query must be a plain string literal: dynamically built queries (variables,
+interpolation, concatenation) are skipped silently, as are unexplainable statements.
 
 Both SQLite and MySQL accept `EXPLAIN` for `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `REPLACE`, and
 CTEs, so all of them are checked on either driver. The only driver difference is placeholder
 normalization: SQLite accepts `?` and `:name` inline, while other drivers (MySQL, …) need them
-replaced with `NULL` because `EXPLAIN` runs through `PDO::query()`, not a prepared statement.
+replaced with `1` because `EXPLAIN` runs through `PDO::query()`, not a prepared statement.
 
 ## Configuration
 
@@ -37,7 +39,7 @@ touches the host environment):
 | `MAGO_PDO_EXTENSION_MYSQL_PASSWORD` | MySQL password. |
 | `MAGO_PDO_EXTENSION_MYSQL_DATABASE` | MySQL database (schema). |
 
-Without a valid configuration the plugin stays silent.
+Without a valid configuration the extension stays silent.
 
 ## Return type inference
 
@@ -164,10 +166,10 @@ Two layers, mirroring the [mago-extension-template](https://github.com/carthage-
    just test
    ```
 
-2. **Corpus** (`tests/corpus/`) — a small PHP project analyzed by the real `mago` binary with
-   the extension host attached (`tests/corpus/worker.php`). Fixtures declare expected
-   diagnostics with `@mago-expect analysis:pdo/query-analyzer/unrunnable-query`; runnable and
-   skipped queries assert silence. The corpus also exercises return type inference:
+2. **Corpus** (`tests/corpus/`) — a small PHP project linted and analyzed by the real `mago`
+   binary with the extension host attached (`tests/corpus/worker.php`). Fixtures declare
+   expected diagnostics with `@mago-expect lint:pdo/unrunnable-query`; runnable and skipped
+   queries assert silence. The corpus also exercises return type inference:
    `TypedQueries.php` asserts the inferred row shapes with typed expect helpers (plus one
    deliberate `@mago-expect analysis:invalid-argument` control), so an inference regression
    surfaces as a missing or wrong type. The corpus database is seeded by
