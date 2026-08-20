@@ -9,6 +9,7 @@ use Bleksak\MagoPdoExtension\Services\ConnectionProvider;
 use Bleksak\MagoPdoExtension\Services\DbTypeMapper;
 use Bleksak\MagoPdoExtension\Services\SchemaIntrospector;
 use Bleksak\MagoPdoExtension\Sql\ColumnInfo;
+use Bleksak\MagoPdoExtension\Sql\PmaSelectParser;
 use Bleksak\MagoPdoExtension\Sql\SelectedColumn;
 use Bleksak\MagoPdoExtension\Sql\SelectedColumnKind;
 use Bleksak\MagoPdoExtension\Sql\SelectParser;
@@ -149,7 +150,11 @@ final class PdoQueryReturnTypeProvider implements MethodReturnTypeProvider
      */
     private function rowShape(string $driver, string $query): ?array
     {
-        $select = SelectParser::parse($query);
+        // MySQL uses the full phpmyadmin/sql-parser; SQLite keeps the
+        // lightweight regex parser (SQLite-only syntax is not MySQL).
+        $select = $driver === 'mysql'
+            ? PmaSelectParser::parse($query)
+            : SelectParser::parse($query);
 
         if ($select === null) {
             return null;

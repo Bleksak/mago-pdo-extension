@@ -22,7 +22,8 @@
     "minimum-stability": "dev",
     "prefer-stable": true,
     "require": {
-        "carthage-software/mago": "^1.47"
+        "carthage-software/mago": "^1.47",
+        "phpmyadmin/sql-parser": "^6.0"
     },
     "require-dev": {
         "phpunit/phpunit": "^13.3"
