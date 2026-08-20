@@ -25,6 +25,10 @@ format-check:
 corpus-db:
 	php tests/corpus/seed.php
 
+# Benchmarks PmaSelectParser (phpmyadmin/sql-parser) vs the legacy parser.
+bench:
+	php tools/benchmark/bench.php
+
 # Runs the real mago binary against the corpus with the extension host
 # attached. Exits non-zero when an expected diagnostic is missing or a new
 # one appears.

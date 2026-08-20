@@ -547,7 +547,7 @@ final class SelectParser
     /**
      * @return list<SelectedColumn>|null
      */
-    private static function parseOperandList(string $list): ?array
+    public static function parseOperandList(string $list): ?array
     {
         $operands = [];
 
